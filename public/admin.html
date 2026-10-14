@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
   <title>RANGVAASA · Control room</title>
-  <meta name="theme-color" content="#faf7f0">
+  <meta name="theme-color" content="#0d0a1a">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <script src="theme.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&family=Noto+Serif+Gujarati:wght@700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400..700&family=Baloo+Bhai+2:wght@600..800&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.1.20/dist/lenis.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="admin.css">
@@ -21,10 +21,14 @@
   <script src="admin.js" defer></script>
 </head>
 <body class="admin">
+  <div class="ambient" aria-hidden="true"></div>
   <header class="bar">
     <a class="mark" href="/admin">
-      <span class="mark-name"><span data-cfg="name">RANGVAASA</span><b data-cfg="year">2026</b></span>
-      <span class="mark-sub">Control room</span>
+      <img class="logo" src="icon.svg" alt="">
+      <span class="mark-text">
+        <span class="mark-name"><span data-cfg="name">RANGVAASA</span><b data-cfg="year">2026</b></span>
+        <span class="mark-sub">Control room</span>
+      </span>
     </a>
     <div class="bar-right">
       <button class="pill" id="logoutBtn" hidden>Log out</button>

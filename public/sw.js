@@ -1,6 +1,6 @@
 // Caches the viewer app's own files so it opens instantly, even on a weak network.
 // Live video, the API and the studio/admin pages always go to the network.
-const CACHE = "rangvaasa-v4";
+const CACHE = "rangvaasa-v5";
 const SHELL = ["/", "/index.html", "/style.css", "/app.js", "/config.js", "/theme.js", "/icon.svg",
                "/icon-192.png", "/apple-touch-icon.png", "/manifest.webmanifest"];
 

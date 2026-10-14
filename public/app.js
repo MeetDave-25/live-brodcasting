@@ -47,59 +47,76 @@
     return e;
   }
 
-  // ---------- Programme ----------
-  const slots = (cfg.schedule || []).map((item, i) => {
-    const card = el("article", "card");
-    const body = el("div");
+  // ---------- Marquee ----------
+  const words = cfg.marquee || ["એ હાલો", "Garba", "Dandiya Raas", "Nav Rang", "Live from the ground", "Every angle"];
+  const track = $("marquee");
+  for (let r = 0; r < 2; r++) words.forEach((w) => {
+    const s = el("span", "", w);
+    if (/[઀-૿]/.test(w)) s.lang = "gu";
+    track.append(s);
+  });
+
+  // ---------- Programme timeline ----------
+  const slots = (cfg.schedule || []).map((item) => {
+    const li = el("li", "tl-item");
     const title = el("h3", "", item.title);
-    body.append(el("p", "label", [prettyTime(item.time), item.label].filter(Boolean).join(" · ")), title);
-    if (item.note) body.append(el("p", "", item.note));
-    card.append(el("span", "card-num", pad2(i + 1)), body);
-    $("programme").append(card);
-    return { card, title, at: slotTime(item.time) };
+    li.append(el("span", "tl-dot"), el("p", "tl-time", [prettyTime(item.time), item.label].filter(Boolean).join(" · ")), title);
+    if (item.note) li.append(el("p", "tl-note", item.note));
+    $("programme").append(li);
+    return { li, title, at: slotTime(item.time) };
   });
 
   function markProgramme() {
     const now = Date.now();
+    let reached = -1;
     slots.forEach((s, i) => {
       const next = slots[i + 1] ? slots[i + 1].at : s.at && new Date(+s.at + 2 * 3600e3);
       const isNow = s.at && now >= s.at && now < next;
       const isPast = s.at && next && now >= next;
-      s.card.classList.toggle("is-now", !!isNow);
-      s.card.classList.toggle("is-past", !!isPast);
+      if (s.at && now >= s.at) reached = i;
+      s.li.classList.toggle("is-now", !!isNow);
+      s.li.classList.toggle("is-past", !!isPast);
       const tag = s.title.querySelector(".now-tag");
       if (isNow && !tag) s.title.insertAdjacentHTML("beforeend", '<span class="now-tag">Now</span>');
       if (!isNow && tag) tag.remove();
     });
+    // Fill the line down to the current item's dot
+    const list = $("programme");
+    const target = slots[reached];
+    const h = target ? target.li.offsetTop + 12 : 0;
+    list.style.setProperty("--progress", `${h}px`);
   }
-  markProgramme();
+  setTimeout(markProgramme, 600); // after fonts settle, so the line lands on the dot
   setInterval(markProgramme, 30000);
+  addEventListener("resize", markProgramme);
 
   if (hasStart) {
     $("dateLabel").textContent = start.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }) +
       " · from " + start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
 
-  // ---------- Details ----------
-  (cfg.details || []).forEach((d, i) => {
-    const card = el("article", "card");
-    const top = el("div", "card-top");
+  // ---------- Details as tickets ----------
+  (cfg.details || []).forEach((d) => {
+    const card = el("article", "ticket");
     const tile = el("span", "tile");
     tile.innerHTML = ICONS[d.icon] || ICONS.calendar;
-    top.append(el("span", "card-num", pad2(i + 1)), el("span", "label", d.label), tile);
-    card.append(top, el("h3", "", d.title));
-    if (d.note) card.append(el("p", "", d.note));
+    card.append(tile, el("p", "label", d.label), el("h3", "", d.title));
+    if (d.note) card.append(el("p", "t-note", d.note));
     $("details").append(card);
   });
   if (cfg.mapUrl) { $("mapBtn").href = cfg.mapUrl; $("mapRow").hidden = false; }
 
-  // Gentle reveal as sections scroll into view
+  // ---------- Staggered reveal as things scroll into view ----------
+  $("programme").classList.add("reveal");
+  $("details").classList.add("reveal");
+  const reveals = document.querySelectorAll(".reveal");
+  reveals.forEach((r) => [...r.children].forEach((c, i) => c.style.setProperty("--i", i)));
   const io = "IntersectionObserver" in window
     ? new IntersectionObserver((entries) => entries.forEach((e) => {
         if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
-      }), { rootMargin: "0px 0px -8% 0px" })
+      }), { rootMargin: "0px 0px -6% 0px" })
     : null;
-  document.querySelectorAll(".reveal").forEach((x) => (io ? io.observe(x) : x.classList.add("in")));
+  reveals.forEach((x) => (io ? io.observe(x) : x.classList.add("in")));
 
   // ---------- Live state ----------
   let status = { live: [], featured: null, announcement: "", announcedAt: null, watching: 0 };
@@ -167,16 +184,25 @@
   }
 
   // ---------- Waiting poster ----------
+  function setDigit(id, value) {
+    const b = $(id);
+    const v = String(value);
+    if (b.textContent === v) return;
+    b.textContent = v;
+    b.classList.remove("tick");
+    void b.offsetWidth; // restart the flip animation
+    b.classList.add("tick");
+  }
   function renderPoster() {
     if (current) return;
     const ms = hasStart ? start - Date.now() : 0;
     $("countdown").hidden = !(ms > 0);
     if (ms > 0) {
       const s = Math.floor(ms / 1000);
-      $("cdD").textContent = Math.floor(s / 86400);
-      $("cdH").textContent = pad2(Math.floor((s % 86400) / 3600));
-      $("cdM").textContent = pad2(Math.floor((s % 3600) / 60));
-      $("cdS").textContent = pad2(s % 60);
+      setDigit("cdD", Math.floor(s / 86400));
+      setDigit("cdH", pad2(Math.floor((s % 86400) / 3600)));
+      setDigit("cdM", pad2(Math.floor((s % 3600) / 60)));
+      setDigit("cdS", pad2(s % 60));
       const day = start.toLocaleDateString(undefined, { weekday: "long" });
       const t = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
       $("posterTitle").innerHTML = "";

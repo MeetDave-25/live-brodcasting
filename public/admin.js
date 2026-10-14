@@ -228,9 +228,9 @@
     const total = cell * (n + quiet * 2);
     canvas.width = canvas.height = total;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fffdf8";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, total, total);
-    ctx.fillStyle = "#30221e";
+    ctx.fillStyle = "#1b1533";
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
       if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
     }

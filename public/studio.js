@@ -1,6 +1,7 @@
 (() => {
   const cfg = window.APP_CONFIG || {};
   const $ = (id) => document.getElementById(id);
+  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
   const preview = $("preview");
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
   const QUALITY = {
@@ -67,7 +68,7 @@
   function closeSheet() { $("sheet").classList.remove("open"); }
 
   async function checkPassword(pass) {
-    const r = await fetch("/api/studio/check", {
+    const r = await fetch(`${API}/api/studio/check`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pass }),
     });
     if (!(r.headers.get("content-type") || "").includes("json")) {
@@ -200,7 +201,7 @@
 
     await pc.setLocalDescription(await pc.createOffer());
     await waitForIce(pc);
-    const res = await fetch(`/whip/${settings.angle}`, {
+    const res = await fetch(`${API}/whip/${settings.angle}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/sdp",

@@ -81,6 +81,43 @@ function proxy(req, res, port, targetPath, { headers = req.headers, extraHeaders
   req.pipe(up);
 }
 
+// Viewers' video. The ticket (?t=) or admin token (?a=) is added to every link inside
+// the playlists, so iPhones (which load segments themselves) keep their access too.
+function proxyHls(req, res, url) {
+  const gate = new URLSearchParams();
+  for (const k of ["t", "a"]) if (url.searchParams.get(k)) gate.set(k, url.searchParams.get(k));
+  const g = gate.toString();
+  const fwd = new URLSearchParams(url.searchParams);
+  fwd.delete("t"); fwd.delete("a");
+  const target = url.pathname + (fwd.toString() ? `?${fwd}` : "");
+  const addGate = (u) => (!g || /^[a-z]+:/i.test(u) ? u : `${u}${u.includes("?") ? "&" : "?"}${g}`);
+  const headers = { ...req.headers };
+  delete headers["accept-encoding"]; // playlists must arrive uncompressed so they can be rewritten
+
+  const up = http.request({ host: "127.0.0.1", port: MTX.hls, path: target, method: req.method, headers }, (r) => {
+    const out = { ...r.headers };
+    if (out.location) out.location = addGate(out.location);
+    const playlist = /\.m3u8$/.test(url.pathname) || /mpegurl/i.test(r.headers["content-type"] || "");
+    if (!playlist || !g) { res.writeHead(r.statusCode, out); return r.pipe(res); }
+    let body = "";
+    r.setEncoding("utf8");
+    r.on("data", (c) => (body += c));
+    r.on("end", () => {
+      body = body.split("\n").map((line) => {
+        const l = line.trimEnd();
+        if (!l) return l;
+        if (l.startsWith("#")) return l.replace(/URI="([^"]+)"/g, (_, u) => `URI="${addGate(u)}"`);
+        return addGate(l);
+      }).join("\n");
+      delete out["content-length"];
+      res.writeHead(r.statusCode, out);
+      res.end(body);
+    });
+  });
+  up.on("error", () => send(res, 502, { error: "Streaming server is not running" }));
+  req.pipe(up);
+}
+
 function clientIp(req) {
   const remote = req.socket.remoteAddress || "";
   const fwd = req.headers["x-forwarded-for"];
@@ -130,18 +167,25 @@ function pruneViewers() {
   for (const [k, v] of viewers) if (now - v.t > 30000) viewers.delete(k);
 }
 
-// Video is only served to viewers holding a spot (cookie from /api/status)
-function hasViewerSpot(req) {
+// Video is only served to viewers holding a spot: ticket in the URL (?t=) or cookie, from /api/status
+function hasViewerSpot(req, url) {
   const m = (req.headers.cookie || "").match(/(?:^|;\s*)rv_v=([a-z0-9]{6,40})/);
-  const v = m && viewers.get(m[1]);
+  const id = url.searchParams.get("t") || (m && m[1]);
+  const v = id && viewers.get(id);
   return !!v && Date.now() - v.t < 30000;
 }
 
 // ---------- Admin sessions ----------
 const sessions = new Map(); // token -> expiry
+function adminToken(req) {
+  const c = (req.headers.cookie || "").match(/(?:^|;\s*)rv_admin=([a-f0-9]{48})/);
+  const h = (req.headers.authorization || "").match(/^Bearer ([a-f0-9]{48})$/);
+  const q = new URL(req.url, "http://x").searchParams.get("a");
+  return (h && h[1]) || (q && /^[a-f0-9]{48}$/.test(q) && q) || (c && c[1]) || null;
+}
 function isAdmin(req) {
-  const m = (req.headers.cookie || "").match(/(?:^|;\s*)rv_admin=([a-f0-9]{48})/);
-  const exp = m && sessions.get(m[1]);
+  const token = adminToken(req);
+  const exp = token && sessions.get(token);
   return !!exp && exp > Date.now();
 }
 
@@ -171,6 +215,7 @@ async function api(req, res, url) {
       watching: viewers.size,
       capacity: MAX_VIEWERS,
       admitted,
+      ticket: admitted ? id : null,
     }, headers);
   }
 
@@ -191,7 +236,7 @@ async function api(req, res, url) {
     const token = crypto.randomBytes(24).toString("hex");
     sessions.set(token, Date.now() + 12 * 3600 * 1000);
     const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
-    return send(res, 200, { ok: true }, {
+    return send(res, 200, { ok: true, token }, {
       "Set-Cookie": `rv_admin=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure}`,
     });
   }
@@ -200,8 +245,8 @@ async function api(req, res, url) {
     if (!isAdmin(req)) return send(res, 401, { error: "Please log in" });
 
     if (route === "/api/admin/logout") {
-      const m = (req.headers.cookie || "").match(/rv_admin=([a-f0-9]{48})/);
-      if (m) sessions.delete(m[1]);
+      const token = adminToken(req);
+      if (token) sessions.delete(token);
       return send(res, 200, { ok: true }, { "Set-Cookie": "rv_admin=; Path=/; Max-Age=0" });
     }
 
@@ -307,11 +352,18 @@ function serveStatic(req, res, pathname) {
 // ---------- Router ----------
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
+  if (/^\/(api|whip|cam[1-6])\b/.test(url.pathname)) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Go-Live");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Expose-Headers", "Location, Content-Disposition");
+    if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
+  }
   try {
     // Viewers' video (on the real server Caddy sends this straight to MediaMTX)
     if (/^\/cam[1-6]\//.test(url.pathname)) {
-      if (!hasViewerSpot(req) && !isAdmin(req)) return send(res, 403, { error: "Full house" });
-      return proxy(req, res, MTX.hls, req.url);
+      if (!hasViewerSpot(req, url) && !isAdmin(req)) return send(res, 403, { error: "Full house" });
+      return proxyHls(req, res, url);
     }
 
     // A phone going live: check password, then hand over to MediaMTX

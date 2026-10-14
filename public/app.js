@@ -6,6 +6,7 @@
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
   const angleName = (id) => (ANGLES.find((a) => a.id === id) || { name: id }).name;
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
 
   // ---------- Text from config ----------
   document.querySelectorAll("[data-cfg]").forEach((el) => { if (cfg[el.dataset.cfg]) el.textContent = cfg[el.dataset.cfg]; });
@@ -253,7 +254,7 @@
       video.hidden = false;
       $("poster").hidden = true;
       $("hudAngle").textContent = angleName(angle);
-      const src = `/${angle}/index.m3u8`;
+      const src = `${API}/${angle}/index.m3u8?t=${viewerId}`; // ticket = this viewer's spot
       if (window.Hls && Hls.isSupported()) {
         hls = new Hls({ backBufferLength: 30, maxLiveSyncPlaybackRate: 1.1 });
         hls.on(Hls.Events.ERROR, (_, d) => {
@@ -391,7 +392,7 @@
     if (refreshing && !force) return;
     refreshing = true;
     try {
-      const r = await fetch(`/api/status?id=${viewerId}&angle=${current || ""}`, { cache: "no-store" });
+      const r = await fetch(`${API}/api/status?id=${viewerId}&angle=${current || ""}`, { cache: "no-store" });
       status = await r.json();
       renderPoster();
       const next = pickAngle();

@@ -49,7 +49,7 @@ if defined TUNNEL_TOKEN (
 ) else (
   echo   No TUNNEL_TOKEN in .env, so using a temporary test link.
   echo   Look for the https://....trycloudflare.com address below.
-  echo   (Test links handle only a small audience - set up your domain for the event.)
+  echo   Test links handle only a small audience - set up your domain for the event.
   echo.
   tools\cloudflared.exe tunnel --no-autoupdate --url http://localhost:8080
 )

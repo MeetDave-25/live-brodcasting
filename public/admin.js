@@ -17,11 +17,21 @@
   }
 
   // Shown when the pages are hosted without the app server (e.g. static hosting like Vercel)
-  const NO_SERVER = "The live server isn't connected. Cameras and the control room need the streaming server running on your VPS (see README).";
+  const NO_SERVER = "The live server isn't connected. Start it on the laptop (start-event.bat) and check the server address in config.js.";
+  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
+
+  // Login token, kept for this browser tab (works across sites, unlike cookies)
+  let token = "";
+  try { token = sessionStorage.getItem("rv-admin-token") || ""; } catch (_) {}
+  function setToken(t) {
+    token = t || "";
+    try { t ? sessionStorage.setItem("rv-admin-token", t) : sessionStorage.removeItem("rv-admin-token"); } catch (_) {}
+  }
 
   async function api(path, body) {
-    const r = await fetch(path, body === undefined ? { cache: "no-store" } : {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const r = await fetch(API + path, body === undefined ? { cache: "no-store", headers } : {
+      method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     if (!(r.headers.get("content-type") || "").includes("json")) throw new Error(NO_SERVER);
     const j = await r.json().catch(() => ({}));
@@ -49,11 +59,17 @@
   $("login").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("loginErr").textContent = "";
-    try { await api("/api/admin/login", { password: $("adminPass").value }); $("adminPass").value = ""; showDash(); }
+    try {
+      const j = await api("/api/admin/login", { password: $("adminPass").value });
+      setToken(j.token);
+      $("adminPass").value = "";
+      showDash();
+    }
     catch (err) { $("loginErr").textContent = err.message; }
   });
   $("logoutBtn").addEventListener("click", async () => {
     await api("/api/admin/logout", {}).catch(() => {});
+    setToken("");
     showLogin();
   });
 
@@ -94,7 +110,7 @@
     c.video.autoplay = true;
     c.frame.querySelector(".off").hidden = true;
     c.frame.append(c.video);
-    const src = `/${id}/index.m3u8`;
+    const src = `${API}/${id}/index.m3u8?a=${token}`;
     if (window.Hls && Hls.isSupported()) {
       c.hls = new Hls({ backBufferLength: 10 });
       c.hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) stopPreview(c); });
@@ -175,7 +191,8 @@
         row.querySelector("b").textContent = when.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
         row.querySelector("span").textContent = `${fmtDuration(r.duration)} · ${fmtSize(r.duration, 900)}`;
         const q = new URLSearchParams({ angle: a.id, start: r.start, duration: String(r.duration) });
-        row.querySelector("a").href = `/api/admin/download?${q}`;
+        q.set("a", token);
+        row.querySelector("a").href = `${API}/api/admin/download?${q}`;
         g.append(row);
       });
       box.append(g);
@@ -251,7 +268,7 @@
   });
 
   // ---------- Start: already logged in? ----------
-  fetch("/api/admin/overview", { cache: "no-store" })
+  fetch(`${API}/api/admin/overview`, { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} })
     .then((r) => {
       if (r.ok) return showDash();
       showLogin();

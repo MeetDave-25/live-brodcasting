@@ -1,5 +1,9 @@
 // ===== Event details – edit freely =====
 window.APP_CONFIG = {
+  // Where the live server runs. Leave "" when these pages are served by the live server itself.
+  // When the pages are on Vercel, put the laptop's tunnel address here, e.g. "https://live.yourdomain.com"
+  server: "https://caps-kay-boc-change.trycloudflare.com",
+
   name: "RANGVAASA",
   year: "2026",
   host: "LJCCA × AIRA LAB",

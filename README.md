@@ -52,6 +52,23 @@ Camera phones (/studio)            Your server                         Viewers (
 
 Phones can't use their camera over plain `http://`, so test phones against the real server.
 
+## Go live everywhere: YouTube, Facebook, Instagram
+
+Control room → **Go live everywhere** → add a platform and paste its stream key → switch it **on**.
+The **main angle** then goes live there as well as on our website, and when you change the main angle, every platform follows.
+
+| Platform | Where to get the stream key |
+|---|---|
+| YouTube | YouTube Studio → Create → Go live → Stream → *Stream key*. A new channel needs ~24 h before live works. |
+| Facebook | facebook.com/live/producer → Go live → Streaming software → *Stream key* |
+| Instagram | On a computer: instagram.com → Create (+) → Live video → copy *Stream URL* and *Stream key* (new key each time). Sent as vertical 9:16. |
+
+Paste your **public YouTube link** in the YouTube entry too: when our website is full, extra viewers then watch the YouTube copy
+**inside our app** instead of waiting.
+
+Each platform adds about the camera's bitrate (~1–2.5 Mbps) to the server's upload. The video is passed through unchanged;
+only Instagram's vertical version is re-encoded. FFmpeg does the sending (`start-event.bat` downloads it to `tools\`).
+
 ## Your own free server, set up from a phone (recommended)
 
 Oracle Cloud's **Always Free** tier gives you a real server for ₹0, forever: always on, enough bandwidth for 400+ viewers,

@@ -31,7 +31,7 @@ fi
 
 say "Installing system packages"
 apt-get update -y
-apt-get install -y curl tar git gnupg debian-keyring debian-archive-keyring apt-transport-https
+apt-get install -y curl tar git ffmpeg gnupg debian-keyring debian-archive-keyring apt-transport-https
 
 if ! command -v caddy >/dev/null; then
   say "Installing Caddy (automatic HTTPS)"

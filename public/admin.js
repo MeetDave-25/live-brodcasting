@@ -217,6 +217,97 @@
     catch (err) { toast(err.message); }
   });
 
+  // ---------- Go live everywhere ----------
+  const RS_HELP = {
+    youtube: "YouTube Studio → Create → Go live → Stream. Copy the Stream key. (A new channel needs about 24 h before live streaming works.)",
+    facebook: "facebook.com/live/producer → Go live → Streaming software. Copy the Stream key.",
+    instagram: "On a computer: instagram.com → Create (+) → Live video → add a title → copy the Stream URL and Stream key. Instagram gives a new key each time you go live.",
+    custom: "Any service that accepts RTMP: paste its Stream URL and key.",
+  };
+  const RS_URL = { youtube: "rtmp://a.rtmp.youtube.com/live2", facebook: "rtmps://live-api-s.facebook.com:443/rtmp", instagram: "", custom: "" };
+  const RS_STATUS = { off: "Off", waiting: "Waiting for the main angle", starting: "Connecting…", live: "Live", retrying: "Retrying…" };
+  let rsLast = "";
+  let rsData = { destinations: [] };
+
+  function rsPlatform() { return document.querySelector("input[name=rsPlatform]:checked").value; }
+  function rsSyncForm(fillUrl) {
+    const p = rsPlatform();
+    $("rsHelp").textContent = RS_HELP[p];
+    if (fillUrl) $("rsUrl").value = RS_URL[p];
+    $("rsWatchRow").hidden = $("rsWatchHelp").hidden = p !== "youtube";
+    if (fillUrl) $("rsVertical").checked = p === "instagram";
+  }
+  document.querySelectorAll("input[name=rsPlatform]").forEach((r) => r.addEventListener("change", () => rsSyncForm(true)));
+
+  function rsOpen(d) {
+    $("rsForm").hidden = false;
+    $("rsAdd").hidden = true;
+    $("rsErr").textContent = "";
+    $("rsId").value = d ? d.id : "";
+    document.querySelector(`input[name=rsPlatform][value=${d ? d.platform : "youtube"}]`).checked = true;
+    rsSyncForm(!d);
+    if (d) { $("rsUrl").value = d.url; $("rsWatch").value = d.watchUrl; $("rsVertical").checked = d.vertical; }
+    else $("rsWatch").value = "";
+    $("rsKey").value = "";
+    $("rsKey").placeholder = d ? `Saved (${d.key}). Paste a new one to change it` : "Paste the stream key";
+    $("rsForm").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function rsClose() { $("rsForm").hidden = true; $("rsAdd").hidden = false; }
+  $("rsAdd").addEventListener("click", () => rsOpen(null));
+  $("rsCancel").addEventListener("click", rsClose);
+  $("rsForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("rsErr").textContent = "";
+    try {
+      const v = await api("/api/admin/restream/save", {
+        id: $("rsId").value || undefined, platform: rsPlatform(), url: $("rsUrl").value.trim(),
+        key: $("rsKey").value.trim(), watchUrl: $("rsWatch").value.trim(), vertical: $("rsVertical").checked,
+      });
+      rsClose();
+      renderRestream(v, true);
+      toast("Saved. Switch it on when you're ready");
+    } catch (err) { $("rsErr").textContent = err.message; }
+  });
+
+  function renderRestream(v, force) {
+    if (!v) return;
+    rsData = v;
+    const key = JSON.stringify(v);
+    if (key === rsLast && !force) return;
+    rsLast = key;
+    $("rsIntro").textContent = v.ffmpeg
+      ? "Switch a platform on and the main angle goes live there too. When you change the main angle, they follow."
+      : "FFmpeg isn't installed on the server, so this can't send to other platforms yet (start-event.bat downloads it).";
+    const list = $("rsList");
+    list.innerHTML = "";
+    v.destinations.forEach((d) => {
+      const card = document.createElement("article");
+      card.className = `rs-card is-${d.status}`;
+      card.innerHTML = `
+        <div class="rs-top">
+          <div><p class="rs-name"></p><p class="rs-status"><i></i><span></span></p></div>
+          <button class="switch" role="switch" aria-label="On or off"><span></span></button>
+        </div>
+        <p class="rs-err" hidden></p>
+        <div class="rs-actions"><button class="copy" data-act="edit">Edit</button><button class="copy" data-act="del">Remove</button></div>`;
+      card.querySelector(".rs-name").textContent = d.name + (d.vertical ? " · vertical" : "");
+      card.querySelector(".rs-status span").textContent = RS_STATUS[d.status] || d.status;
+      if (d.error && d.status !== "live") { const er = card.querySelector(".rs-err"); er.hidden = false; er.textContent = d.error; }
+      const sw = card.querySelector(".switch");
+      sw.setAttribute("aria-checked", d.enabled);
+      sw.addEventListener("click", async () => {
+        try { renderRestream(await api("/api/admin/restream/toggle", { id: d.id, enabled: !d.enabled }), true); }
+        catch (err) { toast(err.message); }
+      });
+      card.querySelector("[data-act=edit]").addEventListener("click", () => rsOpen(d));
+      card.querySelector("[data-act=del]").addEventListener("click", async () => {
+        if (!confirm(`Remove ${d.name}? It stops streaming there.`)) return;
+        try { renderRestream(await api("/api/admin/restream/delete", { id: d.id }), true); } catch (err) { toast(err.message); }
+      });
+      list.append(card);
+    });
+  }
+
   // ---------- Server ----------
   const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   function renderServer(s) {
@@ -245,6 +336,7 @@
       renderAngles(data);
       renderRecordings(data.recordings);
       renderServer(data.server);
+      renderRestream(data.restream);
       if (!announceDirty && document.activeElement !== $("announceText")) {
         $("announceText").value = data.state.announcement || "";
         $("announceCount").textContent = `${$("announceText").value.length} / 280`;

@@ -29,6 +29,14 @@ if not exist tools\cloudflared.exe (
   curl -fL -o tools\cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe || goto :fail
 )
 
+REM First run: download FFmpeg - sends the stream to YouTube, Facebook and Instagram
+if not exist tools\ffmpeg.exe (
+  echo Downloading FFmpeg for YouTube / Facebook / Instagram...
+  curl -fL --retry 5 -C - -o tools\ffmpeg.zip https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip || goto :fail
+  "%SystemRoot%\System32\tar.exe" -xf tools\ffmpeg.zip -C tools --strip-components 2 "ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe" || goto :fail
+  del tools\ffmpeg.zip
+)
+
 REM Keep the laptop awake while plugged in
 powercfg /change standby-timeout-ac 0 >nul 2>&1
 powercfg /change monitor-timeout-ac 0 >nul 2>&1

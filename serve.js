@@ -225,6 +225,115 @@ async function setupIce() {
   console.warn("! Could not configure the streaming engine's camera connectivity.");
 }
 
+// ---------- Go live everywhere: send the main angle to YouTube / Facebook / Instagram ----------
+// Each switched-on platform gets its own FFmpeg process that reads the main angle from the
+// streaming engine and pushes it out over RTMP(S). Video is passed through untouched (no quality
+// loss, almost no CPU); audio is converted to AAC, which the platforms require. Instagram wants
+// vertical video, so that one is re-encoded to 720x1280.
+const DEST_FILE = path.join(DATA, "destinations.json");
+const PLATFORMS = {
+  youtube:   { name: "YouTube",   url: "rtmp://a.rtmp.youtube.com/live2" },
+  facebook:  { name: "Facebook",  url: "rtmps://live-api-s.facebook.com:443/rtmp" },
+  instagram: { name: "Instagram", url: "", vertical: true },
+  custom:    { name: "Other",     url: "" },
+};
+let destinations = [];
+try { destinations = JSON.parse(fs.readFileSync(DEST_FILE, "utf8")); } catch {}
+function saveDestinations() {
+  fs.mkdirSync(DATA, { recursive: true });
+  fs.writeFileSync(DEST_FILE, JSON.stringify(destinations, null, 2));
+}
+
+const FFMPEG = process.env.FFMPEG_PATH ||
+  (fs.existsSync(path.join(ROOT, "tools", "ffmpeg.exe")) ? path.join(ROOT, "tools", "ffmpeg.exe") : "ffmpeg");
+let ffmpegOk = false;
+try { execFileSync(FFMPEG, ["-version"], { stdio: "ignore" }); ffmpegOk = true; } catch {}
+
+const workers = new Map(); // destination id -> { proc, angle, status, error, since, retryAt, fails }
+
+function ffmpegArgs(d, angle) {
+  const target = `${d.url.replace(/\/+$/, "")}/${d.key}`;
+  const input = ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", `rtsp://127.0.0.1:8554/${angle}`];
+  const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2"];
+  const video = d.vertical
+    ? ["-vf", "scale=720:-2,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-c:v", "libx264", "-preset", "veryfast",
+       "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-pix_fmt", "yuv420p"]
+    : ["-c:v", "copy"];
+  return [...input, "-map", "0:v:0", "-map", "0:a:0?", ...video, ...audio, "-f", "flv", target];
+}
+
+function stopWorker(id, status = "off") {
+  const w = workers.get(id);
+  if (w && w.proc) { w.stopping = true; try { w.proc.kill("SIGKILL"); } catch {} }
+  if (status === "off") workers.delete(id);
+  else workers.set(id, { status, since: null, error: w && w.error, fails: (w && w.fails) || 0 });
+}
+
+function startWorker(d, angle) {
+  const prev = workers.get(d.id) || {};
+  const w = { angle, status: "starting", since: Date.now(), error: prev.error || null, fails: prev.fails || 0 };
+  const proc = spawn(FFMPEG, ffmpegArgs(d, angle), { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+  w.proc = proc;
+  let errText = "";
+  proc.stderr.on("data", (c) => { errText = (errText + c).slice(-600); });
+  // FFmpeg prints nothing on success at this log level; if it is still running after 6 s, we're live
+  const liveTimer = setTimeout(() => { if (workers.get(d.id) === w && !w.stopping) { w.status = "live"; w.error = null; w.fails = 0; } }, 6000);
+  proc.on("error", (e) => { errText = e.message; });
+  proc.on("exit", () => {
+    clearTimeout(liveTimer);
+    if (w.stopping || workers.get(d.id) !== w) return;
+    w.fails++;
+    w.proc = null;
+    w.status = "retrying";
+    w.error = (errText.trim().split(/\r?\n/).pop() || "Connection closed").slice(0, 200);
+    w.retryAt = Date.now() + Math.min(30000, 3000 * w.fails); // back off: 3 s, 6 s ... 30 s
+  });
+  workers.set(d.id, w);
+}
+
+async function syncRestreams() {
+  if (!ffmpegOk) return;
+  const live = liveAngles(await mtxPaths());
+  const angle = state.featured;
+  for (const d of destinations) {
+    const w = workers.get(d.id);
+    if (!d.enabled) { if (w) stopWorker(d.id); continue; }
+    if (!live.includes(angle)) { if (!w || w.proc || w.status !== "waiting") stopWorker(d.id, "waiting"); continue; }
+    if (w && w.proc && w.angle === angle) continue;                 // running fine
+    if (w && w.proc && w.angle !== angle) { stopWorker(d.id, "starting"); }  // main angle changed: follow it
+    const cur = workers.get(d.id);
+    if (cur && cur.status === "retrying" && Date.now() < cur.retryAt) continue;
+    startWorker(d, angle);
+  }
+  for (const id of workers.keys()) if (!destinations.some((d) => d.id === id)) stopWorker(id);
+}
+setInterval(() => { syncRestreams().catch(() => {}); }, 3000);
+process.on("exit", () => { for (const w of workers.values()) if (w.proc) try { w.proc.kill(); } catch {} });
+
+function restreamView() {
+  return {
+    ffmpeg: ffmpegOk,
+    destinations: destinations.map((d) => {
+      const w = workers.get(d.id) || {};
+      return {
+        id: d.id, platform: d.platform, name: (PLATFORMS[d.platform] || PLATFORMS.custom).name,
+        url: d.url, key: d.key ? `••••${d.key.slice(-4)}` : "", vertical: !!d.vertical, enabled: !!d.enabled,
+        watchUrl: d.watchUrl || "", status: d.enabled ? (w.status || "starting") : "off",
+        error: w.error || null, since: w.status === "live" ? w.since : null,
+      };
+    }),
+  };
+}
+
+// A YouTube link the admin pasted, used to send overflow viewers to the YouTube copy
+function overflowVideoId() {
+  const d = destinations.find((x) => x.enabled && x.platform === "youtube" && x.watchUrl);
+  const w = d && workers.get(d.id);
+  if (!d || !w || w.status !== "live") return null;
+  const m = d.watchUrl.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
 // ---------- Viewers: each open app checks in every few seconds ----------
 const viewers = new Map(); // id -> { t, angle }
 function pruneViewers() {
@@ -281,6 +390,7 @@ async function api(req, res, url) {
       capacity: MAX_VIEWERS,
       admitted,
       ticket: admitted ? id : null,
+      overflow: admitted ? null : overflowVideoId(),
     }, headers);
   }
 
@@ -343,7 +453,7 @@ async function api(req, res, url) {
       }));
       const [sha, date, subject] = VERSION.split("|");
       return send(res, 200, {
-        angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state,
+        angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state, restream: restreamView(),
         server: { version: sha || null, versionDate: date || null, versionNote: subject || null, started: STARTED,
                   canUpdate: CAN_UPDATE, relay: iceServers.some((s) => s.urls.some((u) => u.startsWith("turn"))) },
       });
@@ -360,7 +470,47 @@ async function api(req, res, url) {
         state.announcedAt = state.announcement ? new Date().toISOString() : null;
       }
       saveState();
+      syncRestreams().catch(() => {});
       return send(res, 200, { ok: true, state });
+    }
+
+    // Go live everywhere: add/edit, switch on/off, remove a platform
+    if (route === "/api/admin/restream/save" && req.method === "POST") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      if (!PLATFORMS[b.platform]) return send(res, 400, { error: "Pick a platform" });
+      const url = String(b.url || PLATFORMS[b.platform].url || "").trim();
+      if (!/^rtmps?:\/\/[^\s]+$/i.test(url)) return send(res, 400, { error: "Stream URL must start with rtmp:// or rtmps://" });
+      let d = destinations.find((x) => x.id === b.id);
+      const key = String(b.key || "").trim();
+      if (!d && !key) return send(res, 400, { error: "Paste the stream key" });
+      if (!d) { d = { id: crypto.randomBytes(6).toString("hex"), enabled: false }; destinations.push(d); }
+      Object.assign(d, {
+        platform: b.platform, url,
+        vertical: b.vertical !== undefined ? !!b.vertical : !!PLATFORMS[b.platform].vertical,
+        watchUrl: String(b.watchUrl || "").trim().slice(0, 300),
+      });
+      if (key) d.key = key;
+      saveDestinations();
+      if (workers.get(d.id) && workers.get(d.id).proc) stopWorker(d.id, "starting"); // restart with new settings
+      return send(res, 200, restreamView());
+    }
+    if (route === "/api/admin/restream/toggle" && req.method === "POST") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      const d = destinations.find((x) => x.id === b.id);
+      if (!d) return send(res, 404, { error: "Not found" });
+      if (!ffmpegOk) return send(res, 400, { error: "FFmpeg isn't installed on the server" });
+      d.enabled = !!b.enabled;
+      saveDestinations();
+      if (!d.enabled) stopWorker(d.id);
+      syncRestreams().catch(() => {});
+      return send(res, 200, restreamView());
+    }
+    if (route === "/api/admin/restream/delete" && req.method === "POST") {
+      const b = JSON.parse((await readBody(req)) || "{}");
+      stopWorker(b.id);
+      destinations = destinations.filter((x) => x.id !== b.id);
+      saveDestinations();
+      return send(res, 200, restreamView());
     }
 
     // Pull the latest version from GitHub and reinstall, from the phone. Runs as its own

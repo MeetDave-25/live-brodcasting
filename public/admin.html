@@ -88,6 +88,38 @@
 
       <section class="block">
         <div class="block-head">
+          <h2 class="block-title">Go live <em>everywhere</em></h2>
+          <p class="eyebrow">Sends the main angle</p>
+        </div>
+        <p class="fine rs-intro" id="rsIntro">Switch a platform on and the main angle goes live there too. When you change the main angle, they follow.</p>
+        <div class="rs-list" id="rsList"></div>
+        <button class="btn btn-quiet rs-add" id="rsAdd" type="button">+ Add YouTube, Facebook or Instagram</button>
+
+        <form class="rs-form" id="rsForm" hidden>
+          <input type="hidden" id="rsId">
+          <div class="rs-platforms" id="rsPlatforms">
+            <label class="choice"><input type="radio" name="rsPlatform" value="youtube" checked><span><b>YouTube</b></span></label>
+            <label class="choice"><input type="radio" name="rsPlatform" value="facebook"><span><b>Facebook</b></span></label>
+            <label class="choice"><input type="radio" name="rsPlatform" value="instagram"><span><b>Instagram</b></span></label>
+            <label class="choice"><input type="radio" name="rsPlatform" value="custom"><span><b>Other</b></span></label>
+          </div>
+          <p class="rs-help" id="rsHelp"></p>
+          <label class="field"><span>Stream URL</span><input id="rsUrl" placeholder="rtmp://…" autocomplete="off"></label>
+          <label class="field"><span>Stream key</span><input id="rsKey" type="password" placeholder="Paste the stream key" autocomplete="off"></label>
+          <label class="field" id="rsWatchRow"><span>Public YouTube link (optional)</span><input id="rsWatch" placeholder="https://youtube.com/live/…" autocomplete="off"></label>
+          <p class="fine" id="rsWatchHelp">If our website is full, extra viewers watch this YouTube copy inside our app.</p>
+          <label class="check"><input type="checkbox" id="rsVertical"> Vertical video (9:16), for Instagram</label>
+          <p class="form-err" id="rsErr"></p>
+          <div class="announce-row">
+            <span class="spacer"></span>
+            <button class="btn btn-quiet" type="button" id="rsCancel">Cancel</button>
+            <button class="btn" type="submit">Save</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
           <h2 class="block-title">Recordings</h2>
           <p class="eyebrow">Every angle is recorded</p>
         </div>

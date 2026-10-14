@@ -199,8 +199,26 @@
     void b.offsetWidth; // restart the flip animation
     b.classList.add("tick");
   }
+  // Full house + a live YouTube copy: play that inside our app until a spot opens
+  function showOverflow(id) {
+    let f = $("overflowFrame");
+    if (!id) { if (f) f.remove(); return; }
+    if (f && f.dataset.id === id) return;
+    if (!f) {
+      f = document.createElement("iframe");
+      f.id = "overflowFrame";
+      f.title = "Live stream";
+      f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      f.allowFullscreen = true;
+      screenEl.append(f);
+    }
+    f.dataset.id = id;
+    f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1&rel=0`;
+  }
+
   function renderPoster() {
     if (current) return;
+    showOverflow(isFull() ? status.overflow : null);
     if (isFull()) {
       $("countdown").hidden = true;
       $("posterTitle").innerHTML = "";
@@ -242,6 +260,7 @@
 
   function show(angle) {
     current = angle;
+    if (angle) showOverflow(null);
     stopPlayer();
     $("buffer").hidden = true;
     if (!angle) {

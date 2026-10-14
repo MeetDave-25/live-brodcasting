@@ -28,8 +28,13 @@ apiAddress: 127.0.0.1:9997
 playback: true
 playbackAddress: 127.0.0.1:9996
 
+# RTSP only inside this machine: FFmpeg reads the main angle from here to send it to
+# YouTube / Facebook / Instagram ("Go live everywhere" in the control room)
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
 # Not needed: phones publish over WebRTC, viewers watch over HLS
-rtsp: false
 rtmp: false
 srt: false
 moq: false

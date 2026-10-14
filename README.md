@@ -52,6 +52,41 @@ Camera phones (/studio)            Your server                         Viewers (
 
 Phones can't use their camera over plain `http://`, so test phones against the real server.
 
+## Run the event from a laptop (no VPS)
+
+The laptop at the ground is the server. A free **Cloudflare Tunnel** puts it online at your domain with https.
+
+```
+Camera phones ──(venue Wi-Fi)──► Laptop (start-event.bat) ──Cloudflare Tunnel──► live.yourdomain.com ──► up to 400 viewers
+```
+
+**One-time setup (about 20 minutes, a few days before):**
+
+1. **Move your domain's DNS to Cloudflare (free).** Create a Cloudflare account → *Add a domain* → it copies your
+   existing records → copy the two nameservers it shows. In Hostinger hPanel → **Domains → your domain → DNS / Nameservers →
+   Change nameservers**, then paste Cloudflare's two. Your current website keeps working. Updates take up to a few hours.
+2. **Create the tunnel.** Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** → *Cloudflared* →
+   name it `rangvaasa` → copy the **token** (the long text after `--token`).
+   Then **Public hostname**: subdomain `live`, your domain, service **HTTP** → `localhost:8080` → Save.
+3. In `.env`, paste the token: `TUNNEL_TOKEN=eyJ...`
+4. Right-click **`allow-firewall.bat` → Run as administrator** (lets camera phones on the Wi-Fi reach the laptop).
+
+**On the night:** plug in the laptop (wired internet if possible) and double-click **`start-event.bat`**.
+- Viewers: `https://live.yourdomain.com` · Cameras: `/studio` · Control room: `/admin`
+- **Camera phones must be on the same Wi-Fi as the laptop.**
+- Without a `TUNNEL_TOKEN`, the script gives a temporary `trycloudflare.com` link, which is fine for testing with friends.
+
+**How many viewers your internet can carry.** Every viewer streams from the laptop, so the venue's **upload** speed sets the limit:
+
+| Camera quality | Upload needed per viewer | 400 viewers need |
+|---|---|---|
+| Standard 480p | ~0.9 Mbps | ~360 Mbps upload |
+| Saver 360p | ~0.55 Mbps | ~220 Mbps upload |
+
+Run a speed test on the laptop at the venue. If the upload is lower, set `MAX_VIEWERS` in `.env` to about
+*upload Mbps ÷ 0.9* (or ÷ 0.55 with Saver), so the people inside get smooth video and the rest see "Full house".
+A wired fibre line (Jio/Airtel 300 Mbps+ plans have high upload) is ideal.
+
 ## About Vercel / Netlify
 
 This repo includes a `vercel.json`, so the pages (`/`, `/studio`, `/admin`) open on Vercel. But Vercel only

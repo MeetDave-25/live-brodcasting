@@ -13,6 +13,8 @@ loadEnv(path.join(ROOT, ".env"));
 const PORT = Number(process.env.PORT) || 8080;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const BROADCAST_PASSWORD = process.env.BROADCAST_PASSWORD || "garba2026";
+// Most people who can watch at once. Everyone after that sees "Full house" and joins when a spot opens.
+const MAX_VIEWERS = Number(process.env.MAX_VIEWERS) || 400;
 const MTX = { hls: 8888, webrtc: 8889, api: 9997, playback: 9996 };
 const PUBLIC = path.join(ROOT, "public");
 const DATA = path.join(ROOT, "data");
@@ -128,6 +130,13 @@ function pruneViewers() {
   for (const [k, v] of viewers) if (now - v.t > 30000) viewers.delete(k);
 }
 
+// Video is only served to viewers holding a spot (cookie from /api/status)
+function hasViewerSpot(req) {
+  const m = (req.headers.cookie || "").match(/(?:^|;\s*)rv_v=([a-z0-9]{6,40})/);
+  const v = m && viewers.get(m[1]);
+  return !!v && Date.now() - v.t < 30000;
+}
+
 // ---------- Admin sessions ----------
 const sessions = new Map(); // token -> expiry
 function isAdmin(req) {
@@ -140,12 +149,19 @@ function isAdmin(req) {
 async function api(req, res, url) {
   const route = url.pathname;
 
-  // Public status for the viewer app (also counts the viewer)
+  // Public status for the viewer app. Also hands out viewer spots (up to MAX_VIEWERS).
   if (route === "/api/status") {
     const id = url.searchParams.get("id");
     const angle = url.searchParams.get("angle");
-    if (id && id.length <= 40) viewers.set(id, { t: Date.now(), angle: isAngle(angle) ? angle : null });
     pruneViewers();
+    let admitted = false;
+    const headers = {};
+    if (id && /^[a-z0-9]{6,40}$/.test(id) && (viewers.has(id) || viewers.size < MAX_VIEWERS)) {
+      viewers.set(id, { t: Date.now(), angle: isAngle(angle) ? angle : null });
+      admitted = true;
+      const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+      headers["Set-Cookie"] = `rv_v=${id}; Path=/; SameSite=Lax; Max-Age=120${secure}`;
+    }
     const items = await mtxPaths();
     return send(res, 200, {
       live: liveAngles(items),
@@ -153,7 +169,9 @@ async function api(req, res, url) {
       announcement: state.announcement,
       announcedAt: state.announcedAt,
       watching: viewers.size,
-    });
+      capacity: MAX_VIEWERS,
+      admitted,
+    }, headers);
   }
 
   // Broadcaster password check (studio, before going live)
@@ -213,7 +231,7 @@ async function api(req, res, url) {
           recordings[id] = r.status === 200 ? JSON.parse(r.data).map(({ start, duration }) => ({ start, duration })) : [];
         } catch { recordings[id] = []; }
       }));
-      return send(res, 200, { angles, recordings, watching: viewers.size, state });
+      return send(res, 200, { angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state });
     }
 
     if (route === "/api/admin/state" && req.method === "POST") {
@@ -291,7 +309,10 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
     // Viewers' video (on the real server Caddy sends this straight to MediaMTX)
-    if (/^\/cam[1-6]\//.test(url.pathname)) return proxy(req, res, MTX.hls, req.url);
+    if (/^\/cam[1-6]\//.test(url.pathname)) {
+      if (!hasViewerSpot(req) && !isAdmin(req)) return send(res, 403, { error: "Full house" });
+      return proxy(req, res, MTX.hls, req.url);
+    }
 
     // A phone going live: check password, then hand over to MediaMTX
     const whip = url.pathname.match(/^\/whip\/(cam[1-6])$/);

@@ -136,7 +136,7 @@
       if (a.live) startPreview(c, a.id); else stopPreview(c);
     });
     const live = data.angles.filter((a) => a.live && cards[a.id]).length;
-    $("sumWatching").textContent = data.watching.toLocaleString();
+    $("sumWatching").textContent = data.capacity ? `${data.watching} / ${data.capacity}` : data.watching.toLocaleString();
     $("sumLive").textContent = `${live} / ${ANGLES.length}`;
     $("sumMain").textContent = angleName(data.state.featured);
   }

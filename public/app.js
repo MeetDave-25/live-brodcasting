@@ -126,7 +126,10 @@
   let wantSound = false;
   let hls = null;
 
+  const isFull = () => status.admitted === false && status.live.length > 0;
+
   function pickAngle() {
+    if (status.admitted === false) return null; // no spot yet: wait on the poster
     const live = ANGLES.map((a) => a.id).filter((id) => status.live.includes(id));
     if (userPicked && live.includes(userPicked)) return userPicked;
     if (live.includes(status.featured)) return status.featured;
@@ -171,6 +174,7 @@
     const label = pill.querySelector("span");
     pill.className = "pill";
     if (!navigator.onLine) { label.textContent = "No connection"; return; }
+    if (isFull()) { pill.classList.add("is-off"); label.textContent = "Full house"; return; }
     if (current) {
       pill.classList.add("is-live");
       label.textContent = status.watching > 1 ? `Live · ${status.watching.toLocaleString()}` : "Live";
@@ -195,6 +199,15 @@
   }
   function renderPoster() {
     if (current) return;
+    if (isFull()) {
+      $("countdown").hidden = true;
+      $("posterTitle").innerHTML = "";
+      $("posterTitle").append("It's a ", el("em", "", "full house"));
+      $("posterNote").classList.add("keep"); // shown even on small phones
+      $("posterNote").textContent = `All ${status.capacity} spots are taken. You'll join automatically when one opens.`;
+      return;
+    }
+    $("posterNote").classList.remove("keep");
     const ms = hasStart ? start - Date.now() : 0;
     $("countdown").hidden = !(ms > 0);
     if (ms > 0) {
@@ -380,6 +393,7 @@
     try {
       const r = await fetch(`/api/status?id=${viewerId}&angle=${current || ""}`, { cache: "no-store" });
       status = await r.json();
+      renderPoster();
       const next = pickAngle();
       if (next !== current || (next && !hls && !video.src)) show(next);
       renderAngles();

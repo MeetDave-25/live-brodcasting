@@ -245,7 +245,7 @@ em {
 @keyframes flip { from { transform: translateY(-70%); opacity: 0; } to { transform: none; opacity: 1; } }
 .cd span { font: 700 .5rem var(--label); letter-spacing: .16em; text-transform: uppercase; color: rgba(247,241,232,.6); }
 .poster-note { margin: 6px 0 0; font-size: .72rem; color: rgba(247, 241, 232, .6); }
-@media (max-width: 420px) { .poster-note { display: none; } }
+@media (max-width: 420px) { .poster-note:not([hidden]) { display: none; } .poster-note.keep { display: block; } }
 
 /* Player overlay */
 .hud {

@@ -327,8 +327,38 @@
     try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
   }
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && wantLive) keepAwake();
+    if (!document.hidden && wantLive) { keepAwake(); recoverTracks(); }
   });
+
+  // Android stops the camera/mic when the screen locks or another app takes over. When we're back,
+  // get fresh tracks and swap them into the live connection, so viewers see video again.
+  async function recoverTracks() {
+    if (!stream) return;
+    const dead = (t) => !t || t.readyState === "ended" || t.muted;
+    try {
+      const v = stream.getVideoTracks()[0];
+      if (dead(v)) {
+        if (v) { v.stop(); stream.removeTrack(v); }
+        const fresh = (await navigator.mediaDevices.getUserMedia({ video: videoConstraints() })).getVideoTracks()[0];
+        if ("contentHint" in fresh) fresh.contentHint = "motion";
+        stream.addTrack(fresh);
+        preview.srcObject = stream;
+        if (videoSender) await videoSender.replaceTrack(fresh);
+      }
+      const a = stream.getAudioTracks()[0];
+      if (a && a.readyState === "ended") {
+        stream.removeTrack(a);
+        const freshA = (await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })).getAudioTracks()[0];
+        stream.addTrack(freshA);
+        const audioSender = pc && pc.getSenders().find((s) => s !== videoSender);
+        if (audioSender) await audioSender.replaceTrack(freshA);
+        renderMic();
+      }
+      if (wantLive && pc && pc.connectionState === "connected") say("Camera back on. You're live.", "ok");
+    } catch (e) {
+      say("Camera stopped. Tap Flip camera, or end and go live again.", "err");
+    }
+  }
   addEventListener("beforeunload", (e) => { if (wantLive) { e.preventDefault(); e.returnValue = ""; } });
 
   // ---------- Upload stats ----------

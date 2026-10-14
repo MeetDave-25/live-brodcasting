@@ -146,7 +146,7 @@
       setTag(c.frame, "main", "Main", isMain);
       c.el.querySelector(".a-meta").textContent = a.live
         ? [`Live ${since(a.since)}`, a.kbps != null ? `${a.kbps} kbps` : null, `${a.watching} watching`].filter(Boolean).join(" · ")
-        : "Waiting for a phone";
+        : a.stalled ? "Paused: no video from the phone. Is its screen on and the camera page open?" : "Waiting for a phone";
       c.el.querySelector("[data-act=main]").disabled = isMain;
       c.el.querySelector("[data-act=main]").textContent = isMain ? "Main angle" : "Make main";
       c.el.querySelector("[data-act=end]").disabled = !a.live;

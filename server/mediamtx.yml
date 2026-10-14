@@ -2,6 +2,9 @@
 # Passwords are NOT here: the app server (serve.js) checks them and is the only
 # thing allowed to publish. All MediaMTX ports except 8189 are bound to 127.0.0.1.
 logLevel: info
+# Also written to server/mediamtx.log, to diagnose problems after an event
+logDestinations: [stdout, file]
+logFile: mediamtx.log
 
 authMethod: internal
 authInternalUsers:

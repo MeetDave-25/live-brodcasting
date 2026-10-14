@@ -169,11 +169,35 @@ function mtxPaths(maxAge = 2000) {
     pathsInflight = mtxRequest(MTX.api, "/v3/paths/list?itemsPerPage=100")
       .then((r) => (JSON.parse(r.data).items || []))
       .catch(() => [])
-      .then((items) => { pathsCache = { at: Date.now(), items }; pathsInflight = null; return items; });
+      .then((items) => { trackFlow(items); pathsCache = { at: Date.now(), items }; pathsInflight = null; return items; });
   }
   return pathsInflight;
 }
-const liveAngles = (items) => items.filter((p) => isAngle(p.name) && p.ready).map((p) => p.name);
+
+// A phone can stay connected but stop sending video (screen locked, app switched, camera taken by
+// another app). Then the angle is "ready" but frozen, and viewers would wait forever. So an angle
+// only counts as live while video bytes keep arriving.
+const STALL_WINDOW_MS = 6000;
+const STALL_KBPS = 80; // below this only audio is arriving (Opus is ~30-60 kbps), so the video stopped
+const flow = new Map(); // angle -> { startBytes, startT, stalled }
+function trackFlow(items) {
+  const now = Date.now();
+  for (const p of items) {
+    if (!isAngle(p.name)) continue;
+    if (!p.ready) { flow.delete(p.name); continue; }
+    const bytes = p.inboundBytes ?? p.bytesReceived ?? 0;
+    const f = flow.get(p.name);
+    if (!f) { flow.set(p.name, { startBytes: bytes, startT: now, stalled: false }); continue; }
+    if (now - f.startT >= STALL_WINDOW_MS) {
+      const kbps = ((bytes - f.startBytes) * 8) / (now - f.startT);
+      f.stalled = kbps < STALL_KBPS;
+      f.startBytes = bytes;
+      f.startT = now;
+    }
+  }
+}
+const isStalled = (name) => { const f = flow.get(name); return !!f && f.stalled; };
+const liveAngles = (items) => items.filter((p) => isAngle(p.name) && p.ready && !isStalled(p.name)).map((p) => p.name);
 
 // ---------- Camera connectivity (STUN / TURN) ----------
 // Phones and the streaming engine both use these to find a path to each other.
@@ -431,7 +455,8 @@ async function api(req, res, url) {
       const now = Date.now();
       const angles = ANGLES.map((id) => {
         const p = items.find((i) => i.name === id);
-        const live = !!(p && p.ready);
+        const stalled = !!(p && p.ready) && isStalled(id);
+        const live = !!(p && p.ready) && !stalled;
         let kbps = null;
         if (live) {
           const bytes = p.inboundBytes ?? p.bytesReceived ?? 0;
@@ -441,7 +466,7 @@ async function api(req, res, url) {
         } else rates.delete(id);
         let watching = 0;
         for (const v of viewers.values()) if (v.angle === id) watching++;
-        return { id, live, since: live ? p.readyTime : null, kbps, tracks: (p && p.tracks) || [], watching };
+        return { id, live, stalled, since: live ? p.readyTime : null, kbps, tracks: (p && p.tracks) || [], watching };
       });
       const recordings = {};
       await Promise.all(ANGLES.map(async (id) => {

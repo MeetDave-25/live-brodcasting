@@ -130,9 +130,15 @@
 
   const isFull = () => status.admitted === false && status.live.length > 0;
 
+  // Angles that kept freezing on this device: skip them for a little while if others are live
+  const shaky = new Map(); // angle -> until
+  const isShaky = (id) => (shaky.get(id) || 0) > Date.now();
+
   function pickAngle() {
     if (status.admitted === false) return null; // no spot yet: wait on the poster
-    const live = ANGLES.map((a) => a.id).filter((id) => status.live.includes(id));
+    const all = ANGLES.map((a) => a.id).filter((id) => status.live.includes(id));
+    const steady = all.filter((id) => !isShaky(id));
+    const live = steady.length ? steady : all;
     if (userPicked && live.includes(userPicked)) return userPicked;
     if (live.includes(status.featured)) return status.featured;
     if (current && live.includes(current)) return current;
@@ -317,10 +323,23 @@
 
   // Watchdog: if the picture hasn't moved for ~10 s, restart the player
   let lastT = -1, frozen = 0;
+  const restarts = {};
+  video.addEventListener("playing", () => { if (current) restarts[current] = 0; });
   setInterval(() => {
     if (!current || (video.paused && video.readyState >= 2)) { frozen = 0; return; }
     if (video.currentTime === lastT) frozen += 2; else { frozen = 0; lastT = video.currentTime; }
-    if (frozen >= 10) { frozen = 0; lastT = -1; show(current); }
+    if (frozen >= 10) {
+      frozen = 0; lastT = -1;
+      // Second freeze in a row on this angle: try another live angle for 30 s
+      restarts[current] = (restarts[current] || 0) + 1;
+      if (restarts[current] >= 2) {
+        shaky.set(current, Date.now() + 30000);
+        restarts[current] = 0;
+        const next = pickAngle();
+        if (next && next !== current) { if (userPicked === current) userPicked = null; return show(next); }
+      }
+      show(current);
+    }
   }, 2000);
 
   // ---------- Controls ----------

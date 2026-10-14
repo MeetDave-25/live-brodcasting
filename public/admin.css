@@ -1,0 +1,90 @@
+/* ============ Control room ============ */
+.admin-main { max-width: 1120px; margin: 0 auto; padding: 8px var(--gutter) 60px; }
+.admin .bar .pill { background: transparent; }
+
+/* Login */
+.login { max-width: 380px; margin: 12vh auto 0; }
+.login h1 { font: 600 2.8rem/1.05 var(--serif); margin: 10px 0 28px; }
+.field { display: grid; gap: 8px; margin: 0 0 14px; }
+.field > span { font-size: .8rem; font-weight: 600; color: var(--ink-2); }
+.field input, .announce textarea {
+  width: 100%; padding: 13px 14px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--ink); font: inherit; font-size: 1rem;
+}
+.form-err { color: var(--live); min-height: 1.2em; margin: 0 0 12px; font-size: .88rem; }
+.login .btn { width: 100%; }
+
+/* Summary */
+.summary {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow: hidden; margin-top: 18px;
+}
+.summary > div { background: var(--card); padding: 18px; min-width: 0; }
+.summary .eyebrow { color: var(--gold); }
+.big { font: 600 clamp(2rem, 7vw, 3rem)/1.05 var(--serif); margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+.big.serif-sm { font-size: clamp(1.2rem, 4.5vw, 1.7rem); font-weight: 600; overflow-wrap: anywhere; }
+
+/* Angle cards */
+.angle-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.a-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.a-card.is-main { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.a-frame { position: relative; aspect-ratio: 16 / 9; background: var(--screen); }
+.a-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.a-frame .off { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(250,247,240,.55); font: italic 500 1.25rem var(--serif); }
+.a-tag {
+  position: absolute; top: 10px; left: 10px; z-index: 1;
+  font: 700 .6rem var(--label); letter-spacing: .14em; text-transform: uppercase;
+  padding: 4px 9px; border-radius: 999px; background: var(--live); color: #fff;
+}
+.a-tag.main { left: auto; right: 10px; background: #f3b844; color: #30221e; }
+.a-body { padding: 14px 16px 16px; }
+.a-name { font: 600 1.4rem/1.2 var(--serif); margin: 0; }
+.a-meta { color: var(--ink-3); font-size: .82rem; margin: 4px 0 14px; min-height: 1.3em; }
+.a-actions { display: flex; gap: 8px; }
+.a-actions .btn { min-height: 40px; padding: 0 16px; font-size: .85rem; flex: 1; }
+.btn-danger { background: transparent; color: var(--live); border-color: var(--line); }
+
+/* Announcement */
+.announce textarea { resize: vertical; min-height: 96px; font: 500 1.2rem/1.45 var(--serif); }
+.announce-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.announce-row .fine { margin: 0; }
+
+/* Recordings */
+.rec-group { margin-bottom: 18px; }
+.rec-group h3 { font: 600 .7rem var(--label); letter-spacing: .16em; text-transform: uppercase; color: var(--gold); margin: 0 0 6px; }
+.rec-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.rec-row:last-child { border-bottom: 1px solid var(--line); }
+.rec-when { flex: 1; min-width: 0; }
+.rec-when b { display: block; font-weight: 600; }
+.rec-when span { color: var(--ink-3); font-size: .85rem; }
+.rec-row .btn { min-height: 40px; padding: 0 16px; font-size: .85rem; text-decoration: none; }
+.empty { color: var(--ink-3); margin: 0; }
+
+/* Links */
+.links { display: grid; gap: 22px; grid-template-columns: auto 1fr; align-items: start; }
+.qr-card { display: grid; gap: 12px; justify-items: center; }
+.qr-card canvas { width: 180px; height: 180px; border-radius: 12px; background: #fffdf8; image-rendering: pixelated; }
+.link-list dd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.link-list code { font: 500 .88rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.copy { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 4px 12px; font-size: .8rem; font-weight: 600; }
+
+@media (max-width: 640px) {
+  .links { grid-template-columns: 1fr; }
+  .summary > div { padding: 12px; }
+  .a-actions .btn { padding: 0 10px; }
+}
+
+/* Control room sections use the site's serif headings */
+.admin .block { padding: 34px 0 4px; }
+.admin .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.admin .block-title { font: 600 2rem/1.1 var(--serif); margin: 0; }
+.details { margin: 0; }
+.details div { display: grid; grid-template-columns: 74px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.details div:last-child { border-bottom: 1px solid var(--line); }
+.details dt { color: var(--ink-3); font-size: .85rem; padding-top: 2px; }
+.details dd { margin: 0; }

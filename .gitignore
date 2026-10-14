@@ -1,0 +1,6 @@
+.env
+data/
+server/recordings/
+server/bin/
+server/bin-linux/
+server/mediamtx.prod.yml

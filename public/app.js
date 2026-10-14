@@ -1,0 +1,402 @@
+(() => {
+  const cfg = window.APP_CONFIG || {};
+  const $ = (id) => document.getElementById(id);
+  const video = $("video");
+  const screenEl = $("screen");
+  const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
+  const angleName = (id) => (ANGLES.find((a) => a.id === id) || { name: id }).name;
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- Text from config ----------
+  document.querySelectorAll("[data-cfg]").forEach((el) => { if (cfg[el.dataset.cfg]) el.textContent = cfg[el.dataset.cfg]; });
+  if (cfg.name) document.title = `${cfg.name} ${cfg.year || ""} · Live`.replace("  ", " ");
+  $("posterKicker").textContent = cfg.host ? `${cfg.host} · Live` : "Live coverage";
+  if (cfg.coords) $("coords").textContent = cfg.coords;
+
+  // ---------- Smooth scrolling (Lenis) ----------
+  const lenis = window.Lenis && !calm ? new Lenis({ autoRaf: true, lerp: 0.1 }) : null;
+
+  // ---------- Event times ----------
+  const start = cfg.startTime ? new Date(cfg.startTime) : null;
+  const hasStart = start && !isNaN(start);
+  const [, eventDay, tz] = (cfg.startTime || "").match(/^(\d{4}-\d{2}-\d{2})T[\d:.]+(Z|[+-]\d{2}:\d{2})?$/) || [];
+
+  function slotTime(hhmm) {
+    if (!eventDay) return null;
+    const t = new Date(`${eventDay}T${hhmm}:00${tz || "+05:30"}`);
+    // Times after midnight belong to the next day
+    if (hasStart && t < start - 6 * 3600e3) t.setDate(t.getDate() + 1);
+    return t;
+  }
+  function prettyTime(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+  }
+  const pad2 = (n) => String(n).padStart(2, "0");
+
+  const ICONS = {
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>',
+  };
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  }
+
+  // ---------- Programme ----------
+  const slots = (cfg.schedule || []).map((item, i) => {
+    const card = el("article", "card");
+    const body = el("div");
+    const title = el("h3", "", item.title);
+    body.append(el("p", "label", [prettyTime(item.time), item.label].filter(Boolean).join(" · ")), title);
+    if (item.note) body.append(el("p", "", item.note));
+    card.append(el("span", "card-num", pad2(i + 1)), body);
+    $("programme").append(card);
+    return { card, title, at: slotTime(item.time) };
+  });
+
+  function markProgramme() {
+    const now = Date.now();
+    slots.forEach((s, i) => {
+      const next = slots[i + 1] ? slots[i + 1].at : s.at && new Date(+s.at + 2 * 3600e3);
+      const isNow = s.at && now >= s.at && now < next;
+      const isPast = s.at && next && now >= next;
+      s.card.classList.toggle("is-now", !!isNow);
+      s.card.classList.toggle("is-past", !!isPast);
+      const tag = s.title.querySelector(".now-tag");
+      if (isNow && !tag) s.title.insertAdjacentHTML("beforeend", '<span class="now-tag">Now</span>');
+      if (!isNow && tag) tag.remove();
+    });
+  }
+  markProgramme();
+  setInterval(markProgramme, 30000);
+
+  if (hasStart) {
+    $("dateLabel").textContent = start.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }) +
+      " · from " + start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  // ---------- Details ----------
+  (cfg.details || []).forEach((d, i) => {
+    const card = el("article", "card");
+    const top = el("div", "card-top");
+    const tile = el("span", "tile");
+    tile.innerHTML = ICONS[d.icon] || ICONS.calendar;
+    top.append(el("span", "card-num", pad2(i + 1)), el("span", "label", d.label), tile);
+    card.append(top, el("h3", "", d.title));
+    if (d.note) card.append(el("p", "", d.note));
+    $("details").append(card);
+  });
+  if (cfg.mapUrl) { $("mapBtn").href = cfg.mapUrl; $("mapRow").hidden = false; }
+
+  // Gentle reveal as sections scroll into view
+  const io = "IntersectionObserver" in window
+    ? new IntersectionObserver((entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      }), { rootMargin: "0px 0px -8% 0px" })
+    : null;
+  document.querySelectorAll(".reveal").forEach((x) => (io ? io.observe(x) : x.classList.add("in")));
+
+  // ---------- Live state ----------
+  let status = { live: [], featured: null, announcement: "", announcedAt: null, watching: 0 };
+  let current = null;      // angle being shown
+  let userPicked = null;   // angle the viewer chose themselves
+  let wasLive = false;
+  let wantSound = false;
+  let hls = null;
+
+  function pickAngle() {
+    const live = ANGLES.map((a) => a.id).filter((id) => status.live.includes(id));
+    if (userPicked && live.includes(userPicked)) return userPicked;
+    if (live.includes(status.featured)) return status.featured;
+    if (current && live.includes(current)) return current;
+    return live[0] || null;
+  }
+
+  // ---------- Angle switcher ----------
+  const anglesEl = $("angles");
+  const angleBtns = ANGLES.map((a, i) => {
+    const b = document.createElement("button");
+    b.className = "angle";
+    b.setAttribute("role", "tab");
+    b.innerHTML = `<span class="angle-num">${String(i + 1).padStart(2, "0")}</span>
+      <span class="angle-text"><span class="angle-name"></span><span class="angle-state"></span></span>`;
+    b.querySelector(".angle-name").textContent = a.name;
+    b.addEventListener("click", () => {
+      if (!status.live.includes(a.id)) return;
+      userPicked = a.id;
+      if (a.id !== current) show(a.id);
+      b.scrollIntoView({ behavior: calm ? "auto" : "smooth", inline: "center", block: "nearest" });
+    });
+    anglesEl.append(b);
+    return { id: a.id, b };
+  });
+  anglesEl.hidden = ANGLES.length < 2;
+
+  function renderAngles() {
+    angleBtns.forEach(({ id, b }) => {
+      const live = status.live.includes(id);
+      b.classList.toggle("is-live", live);
+      b.classList.toggle("is-active", id === current);
+      b.setAttribute("aria-selected", id === current);
+      b.disabled = !live;
+      b.querySelector(".angle-state").textContent = live ? (id === current ? "Watching" : "Live") : "Off air";
+    });
+  }
+
+  // ---------- Status pill ----------
+  function renderPill() {
+    const pill = $("statusPill");
+    const label = pill.querySelector("span");
+    pill.className = "pill";
+    if (!navigator.onLine) { label.textContent = "No connection"; return; }
+    if (current) {
+      pill.classList.add("is-live");
+      label.textContent = status.watching > 1 ? `Live · ${status.watching.toLocaleString()}` : "Live";
+      if (status.watching > 1) label.append(Object.assign(document.createElement("span"), { className: "w-long", textContent: " watching" }));
+    } else if (hasStart && Date.now() < start) {
+      label.textContent = "Upcoming";
+    } else {
+      pill.classList.add("is-off");
+      label.textContent = "Off air";
+    }
+  }
+
+  // ---------- Waiting poster ----------
+  function renderPoster() {
+    if (current) return;
+    const ms = hasStart ? start - Date.now() : 0;
+    $("countdown").hidden = !(ms > 0);
+    if (ms > 0) {
+      const s = Math.floor(ms / 1000);
+      $("cdD").textContent = Math.floor(s / 86400);
+      $("cdH").textContent = pad2(Math.floor((s % 86400) / 3600));
+      $("cdM").textContent = pad2(Math.floor((s % 3600) / 60));
+      $("cdS").textContent = pad2(s % 60);
+      const day = start.toLocaleDateString(undefined, { weekday: "long" });
+      const t = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      $("posterTitle").innerHTML = "";
+      $("posterTitle").append("Live from ", el("em", "", `${day}, ${t}`));
+      $("posterNote").textContent = "The video begins on its own. Keep this page open.";
+    } else if (wasLive) {
+      $("posterTitle").textContent = "A short pause";
+      $("posterNote").textContent = "The cameras will be back shortly. The video resumes on its own.";
+    } else {
+      $("posterTitle").textContent = "Starting soon";
+      $("posterNote").textContent = "The video begins on its own. Keep this page open.";
+    }
+  }
+  setInterval(renderPoster, 1000);
+
+  // ---------- Player ----------
+  function stopPlayer() {
+    if (hls) { hls.destroy(); hls = null; }
+    video.removeAttribute("src");
+    video.load();
+  }
+
+  function show(angle) {
+    current = angle;
+    stopPlayer();
+    $("buffer").hidden = true;
+    if (!angle) {
+      video.hidden = true;
+      $("poster").hidden = false;
+      $("soundHint").hidden = true;
+      screenEl.classList.remove("show-hud");
+      renderPoster();
+    } else {
+      wasLive = true;
+      video.hidden = false;
+      $("poster").hidden = true;
+      $("hudAngle").textContent = angleName(angle);
+      const src = `/${angle}/index.m3u8`;
+      if (window.Hls && Hls.isSupported()) {
+        hls = new Hls({ backBufferLength: 30, maxLiveSyncPlaybackRate: 1.1 });
+        hls.on(Hls.Events.ERROR, (_, d) => {
+          if (!d.fatal) return;
+          if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else lost();
+        });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+      } else {
+        video.src = src; // iPhone plays HLS natively
+      }
+      startPlayback();
+      peekHud();
+    }
+    renderAngles();
+    renderPill();
+  }
+
+  function startPlayback() {
+    video.muted = !wantSound;
+    video.play().catch(() => {
+      video.muted = true; // browsers block autoplay with sound until the viewer taps
+      video.play().catch(() => {});
+    }).finally(renderSound);
+  }
+
+  // Lost the stream: show a spinner and check again shortly
+  function lost() {
+    stopPlayer();
+    $("buffer").hidden = false;
+    const was = current;
+    current = null;
+    setTimeout(() => { if (!current) { current = was; refresh(true); } }, 2500);
+  }
+
+  video.addEventListener("error", () => { if (!hls && current) lost(); });
+  video.addEventListener("waiting", () => { if (current) $("buffer").hidden = false; });
+  video.addEventListener("playing", () => { $("buffer").hidden = true; });
+
+  // Watchdog: if the picture hasn't moved for ~10 s, restart the player
+  let lastT = -1, frozen = 0;
+  setInterval(() => {
+    if (!current || (video.paused && video.readyState >= 2)) { frozen = 0; return; }
+    if (video.currentTime === lastT) frozen += 2; else { frozen = 0; lastT = video.currentTime; }
+    if (frozen >= 10) { frozen = 0; lastT = -1; show(current); }
+  }, 2000);
+
+  // ---------- Controls ----------
+  let hudTimer;
+  function peekHud() {
+    screenEl.classList.add("show-hud");
+    clearTimeout(hudTimer);
+    hudTimer = setTimeout(() => screenEl.classList.remove("show-hud"), 3500);
+  }
+  screenEl.addEventListener("click", (e) => {
+    if (!current || e.target.closest("button")) return;
+    if (screenEl.classList.contains("show-hud")) screenEl.classList.remove("show-hud");
+    else peekHud();
+  });
+
+  function renderSound() {
+    const muted = video.muted;
+    $("soundHint").hidden = !current || !muted;
+    $("muteBtn").setAttribute("aria-label", muted ? "Turn sound on" : "Mute");
+    $("muteBtn").querySelector(".ic-off").toggleAttribute("hidden", !muted);
+    $("muteBtn").querySelector(".ic-on").toggleAttribute("hidden", muted);
+  }
+  function toggleSound() {
+    wantSound = video.muted;
+    video.muted = !wantSound;
+    if (wantSound) video.play().catch(() => {});
+    renderSound();
+    peekHud();
+  }
+  $("muteBtn").addEventListener("click", toggleSound);
+  $("soundHint").addEventListener("click", toggleSound);
+  video.addEventListener("volumechange", renderSound);
+
+  $("fullBtn").addEventListener("click", async () => {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl) return (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    if (screenEl.requestFullscreen) {
+      await screenEl.requestFullscreen().catch(() => {});
+      try { await screen.orientation.lock("landscape"); } catch (_) {}
+    } else if (screenEl.webkitRequestFullscreen) screenEl.webkitRequestFullscreen();
+    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.fullscreenElement) try { screen.orientation.unlock(); } catch (_) {}
+  });
+
+  const canPip = document.pictureInPictureEnabled ||
+    (video.webkitSupportsPresentationMode && video.webkitSupportsPresentationMode("picture-in-picture"));
+  $("pipBtn").hidden = !canPip;
+  $("pipBtn").addEventListener("click", () => {
+    if (document.pictureInPictureElement) return document.exitPictureInPicture();
+    if (video.requestPictureInPicture) video.requestPictureInPicture().catch(() => {});
+    else video.webkitSetPresentationMode("picture-in-picture");
+  });
+
+  // ---------- Announcements ----------
+  let lastNotice = undefined;
+  function renderNotice() {
+    const text = status.announcement;
+    $("notice").hidden = !text;
+    if (!text) { lastNotice = null; return; }
+    $("noticeText").textContent = text;
+    $("noticeTime").textContent = status.announcedAt
+      ? "· " + new Date(status.announcedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+      : "";
+    if (lastNotice !== undefined && lastNotice !== status.announcedAt) toast("New note from the organisers", scrollToNotice);
+    lastNotice = status.announcedAt;
+  }
+  function scrollToNotice() {
+    const offset = -(document.querySelector(".bar").offsetHeight + document.querySelector(".stage").offsetHeight + 12);
+    if (lenis) lenis.scrollTo($("notice"), { offset, duration: 1.2 });
+    else window.scrollTo({ top: $("notice").getBoundingClientRect().top + scrollY + offset, behavior: "smooth" });
+  }
+
+  let toastTimer;
+  function toast(text, onClick) {
+    const t = $("toast");
+    t.textContent = text;
+    t.onclick = () => { t.classList.remove("in"); if (onClick) onClick(); };
+    t.classList.add("in");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("in"), 6000);
+  }
+
+  // ---------- Talk to the server every few seconds ----------
+  const viewerId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  let refreshing = false;
+  async function refresh(force) {
+    if (refreshing && !force) return;
+    refreshing = true;
+    try {
+      const r = await fetch(`/api/status?id=${viewerId}&angle=${current || ""}`, { cache: "no-store" });
+      status = await r.json();
+      const next = pickAngle();
+      if (next !== current || (next && !hls && !video.src)) show(next);
+      renderAngles();
+      renderPill();
+      renderNotice();
+    } catch (_) {
+      renderPill();
+    } finally {
+      refreshing = false;
+    }
+  }
+  refresh();
+  setInterval(refresh, 5000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  addEventListener("online", () => refresh());
+  addEventListener("offline", renderPill);
+  renderPoster();
+
+  // ---------- Share & install ----------
+  $("shareBtn").addEventListener("click", async () => {
+    const data = { title: document.title, text: "Watch the garba night live", url: location.origin };
+    try {
+      if (navigator.share) await navigator.share(data);
+      else { await navigator.clipboard.writeText(data.url); toast("Link copied"); }
+    } catch (_) {}
+  });
+
+  let deferredInstall;
+  addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstall = e;
+    $("installBtn").hidden = false;
+  });
+  $("installBtn").addEventListener("click", async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    await deferredInstall.userChoice;
+    deferredInstall = null;
+    $("installBtn").hidden = true;
+  });
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (isIOS && !standalone) $("iosHint").hidden = false;
+
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();

@@ -52,6 +52,29 @@ Camera phones (/studio)            Your server                         Viewers (
 
 Phones can't use their camera over plain `http://`, so test phones against the real server.
 
+## Your own free server, set up from a phone (recommended)
+
+Oracle Cloud's **Always Free** tier gives you a real server for ₹0, forever: always on, enough bandwidth for 400+ viewers,
+and camera phones connect from any network. After this one-time setup, **everything is done from phones**:
+viewers, cameras (`/studio`) and the control room (`/admin`), including server updates.
+
+1. **Sign up** at oracle.com/cloud/free. A debit or credit card is needed only for verification. Pick an India home region (Mumbai or Hyderabad).
+2. **Create the server:** Menu → Compute → Instances → **Create instance**.
+   - Image: **Canonical Ubuntu 24.04**
+   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPU, 12 GB (inside the free limit). If it says "out of capacity", try again later or another availability domain.
+   - Networking: keep "Create new virtual cloud network" and **Assign a public IPv4 address**.
+   - **Show advanced options → Management → Paste cloud-init script**: open
+     [`deploy/oracle-cloud-init.sh`](deploy/oracle-cloud-init.sh) on GitHub, copy all of it, **change the two passwords**, and paste.
+   - Create.
+3. **Open the ports:** Networking → Virtual cloud networks → your network → **Security Lists → Default** → Add Ingress Rules:
+   - Source `0.0.0.0/0`, **TCP**, destination ports `80,443,8189`
+   - Source `0.0.0.0/0`, **UDP**, destination ports `443,8189`
+4. **Wait about 10 minutes**, then open `https://<your-ip-with-dashes>.sslip.io`.
+   For example, public IP `140.238.12.34` gives **https://140-238-12-34.sslip.io**. Cameras: `/studio`. Control room: `/admin`.
+5. To keep using the Vercel link, set `server` in `public/config.js` to that address.
+
+**Updating later:** Control room → **Server → Update server to latest version**. Do it before the event, not during.
+
 ## Run the event from a laptop (no VPS)
 
 The laptop at the ground is the server. A free **Cloudflare Tunnel** puts it online at your domain with https.

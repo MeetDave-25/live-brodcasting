@@ -88,3 +88,13 @@
 .details div:last-child { border-bottom: 1px solid var(--line); }
 .details dt { color: var(--ink-3); font-size: .85rem; padding-top: 2px; }
 .details dd { margin: 0; }
+
+/* Quick actions at the top: the control room is used from a phone */
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.quick .btn { min-height: 54px; padding: 0 14px; font-size: .92rem; }
+@media (max-width: 420px) { .quick { grid-template-columns: 1fr; } }
+.server-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 18px 18px; }
+.server-card .details div { grid-template-columns: 110px 1fr; }
+.server-card .btn { width: 100%; margin-top: 16px; }
+
+#sumWatching { white-space: nowrap; font-size: clamp(1.5rem, 6.5vw, 3rem); }

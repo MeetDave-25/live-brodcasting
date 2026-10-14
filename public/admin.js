@@ -217,6 +217,26 @@
     catch (err) { toast(err.message); }
   });
 
+  // ---------- Server ----------
+  const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  function renderServer(s) {
+    if (!s) return;
+    $("srvVersion").textContent = s.version ? `${s.version} · ${fmtWhen(s.versionDate)}` : "Local copy";
+    $("srvVersion").title = s.versionNote || "";
+    $("srvStarted").textContent = fmtWhen(s.started);
+    $("srvRelay").textContent = s.relay ? "Relay on: phones can go live from any network" : "Direct: works on most networks";
+    $("updateBtn").hidden = !s.canUpdate;
+  }
+  $("updateBtn").addEventListener("click", async () => {
+    if (!confirm("Update the server to the latest version from GitHub?\n\nLive streams pause for about a minute while it restarts. Don't do this during the event.")) return;
+    try {
+      await api("/api/admin/update", {});
+      $("updateBtn").disabled = true;
+      $("updateNote").textContent = "Updating… the page reconnects by itself in about a minute.";
+      setTimeout(() => location.reload(), 75000);
+    } catch (err) { toast(err.message); }
+  });
+
   // ---------- Poll ----------
   let pollTimer;
   async function poll() {
@@ -224,6 +244,7 @@
       const data = await api("/api/admin/overview");
       renderAngles(data);
       renderRecordings(data.recordings);
+      renderServer(data.server);
       if (!announceDirty && document.activeElement !== $("announceText")) {
         $("announceText").value = data.state.announcement || "";
         $("announceCount").textContent = `${$("announceText").value.length} / 280`;

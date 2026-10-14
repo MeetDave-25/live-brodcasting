@@ -52,6 +52,13 @@
 
     <!-- Dashboard -->
     <div id="dash" hidden>
+      <div class="quick">
+        <a class="btn" href="studio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z"/><circle cx="12" cy="12.5" r="3.2"/></svg>
+          Go live from this phone
+        </a>
+        <a class="btn btn-quiet" href="./" target="_blank" rel="noopener">Open viewer page</a>
+      </div>
       <section class="summary">
         <div><p class="eyebrow">Watching now</p><p class="big" id="sumWatching">0</p></div>
         <div><p class="eyebrow">Angles live</p><p class="big" id="sumLive">0</p></div>
@@ -85,6 +92,19 @@
           <p class="eyebrow">Every angle is recorded</p>
         </div>
         <div id="recordings"></div>
+      </section>
+
+      <section class="block">
+        <div class="block-head"><h2 class="block-title">Server</h2></div>
+        <div class="server-card">
+          <dl class="details">
+            <div><dt>Version</dt><dd id="srvVersion">–</dd></div>
+            <div><dt>Running since</dt><dd id="srvStarted">–</dd></div>
+            <div><dt>Cameras</dt><dd id="srvRelay">–</dd></div>
+          </dl>
+          <button class="btn btn-quiet" id="updateBtn" hidden>Update server to latest version</button>
+          <p class="fine" id="updateNote"></p>
+        </div>
       </section>
 
       <section class="block">

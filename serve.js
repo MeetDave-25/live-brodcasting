@@ -6,6 +6,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { execFileSync, spawn } = require("child_process");
 
 const ROOT = __dirname;
 loadEnv(path.join(ROOT, ".env"));
@@ -37,6 +38,17 @@ function loadEnv(file) {
     if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
   }
 }
+
+// ---------- Version (when installed from GitHub), shown in the control room ----------
+const STARTED = new Date().toISOString();
+function gitVersion() {
+  try {
+    return execFileSync("git", ["log", "-1", "--format=%h|%cI|%s"], { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] })
+      .toString().trim();
+  } catch { return ""; }
+}
+const VERSION = gitVersion();
+const CAN_UPDATE = process.platform === "linux" && fs.existsSync(path.join(ROOT, ".git"));
 
 // ---------- Shared state (main angle + announcement), survives restarts ----------
 const STATE_FILE = path.join(DATA, "state.json");
@@ -329,7 +341,12 @@ async function api(req, res, url) {
           recordings[id] = r.status === 200 ? JSON.parse(r.data).map(({ start, duration }) => ({ start, duration })) : [];
         } catch { recordings[id] = []; }
       }));
-      return send(res, 200, { angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state });
+      const [sha, date, subject] = VERSION.split("|");
+      return send(res, 200, {
+        angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state,
+        server: { version: sha || null, versionDate: date || null, versionNote: subject || null, started: STARTED,
+                  canUpdate: CAN_UPDATE, relay: iceServers.some((s) => s.urls.some((u) => u.startsWith("turn"))) },
+      });
     }
 
     if (route === "/api/admin/state" && req.method === "POST") {
@@ -344,6 +361,18 @@ async function api(req, res, url) {
       }
       saveState();
       return send(res, 200, { ok: true, state });
+    }
+
+    // Pull the latest version from GitHub and reinstall, from the phone. Runs as its own
+    // systemd job so it survives this app restarting halfway through.
+    if (route === "/api/admin/update" && req.method === "POST") {
+      if (!CAN_UPDATE) return send(res, 400, { error: "Updates work on the cloud server (installed from GitHub) only." });
+      const job = spawn("systemd-run", ["--unit", `rangvaasa-update-${Date.now()}`, "--collect",
+        "bash", "-c", `bash ${path.join(ROOT, "deploy", "update.sh")} >> /var/log/rangvaasa-update.log 2>&1`],
+        { detached: true, stdio: "ignore" });
+      job.on("error", () => {});
+      job.unref();
+      return send(res, 202, { ok: true });
     }
 
     if (route === "/api/admin/kick" && req.method === "POST") {

@@ -13,15 +13,16 @@ die() { printf '\n\033[31mError: %s\033[0m\n' "$*"; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run with sudo: sudo bash deploy/install.sh"
 [ -f .env ] || die "No .env file. Run: cp .env.example .env && nano .env"
-sed -i 's/$//' .env   # files edited on Windows
+sed -i 's/\r$//' .env   # files edited on Windows
 set -a; . ./.env; set +a
-: "${DOMAIN:?Set DOMAIN in .env}"
 PORT="${PORT:-8080}"
 case "${ADMIN_PASSWORD:-}${BROADCAST_PASSWORD:-}" in
   *change-this*|"") die "Set ADMIN_PASSWORD and BROADCAST_PASSWORD in .env" ;;
 esac
 
 PUBLIC_IP="$(curl -fsS4 https://api.ipify.org || curl -fsS4 https://ifconfig.me)"
+# No domain yet? Use a free automatic one: 1.2.3.4 -> 1-2-3-4.sslip.io (works with https right away)
+case "${DOMAIN:-}" in ""|auto|live.yourdomain.com) DOMAIN="${PUBLIC_IP//./-}.sslip.io" ;; esac
 DNS_IP="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)"
 if [ "$DNS_IP" != "$PUBLIC_IP" ]; then
   echo "Warning: $DOMAIN points to '${DNS_IP:-nothing}', but this server is $PUBLIC_IP."
@@ -30,7 +31,7 @@ fi
 
 say "Installing system packages"
 apt-get update -y
-apt-get install -y curl tar ufw gnupg debian-keyring debian-archive-keyring apt-transport-https
+apt-get install -y curl tar git gnupg debian-keyring debian-archive-keyring apt-transport-https
 
 if ! command -v caddy >/dev/null; then
   say "Installing Caddy (automatic HTTPS)"
@@ -124,13 +125,22 @@ fi
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 
 say "Opening firewall ports (SSH, web, camera video 8189)"
-ufw allow OpenSSH >/dev/null
-ufw allow 80/tcp >/dev/null
-ufw allow 443/tcp >/dev/null
-ufw allow 443/udp >/dev/null
-ufw allow 8189/udp >/dev/null
-ufw allow 8189/tcp >/dev/null
-ufw --force enable >/dev/null
+if [ -f /etc/iptables/rules.v4 ] && grep -q REJECT /etc/iptables/rules.v4; then
+  # Oracle Cloud images: their own iptables rules block everything but SSH. Open our ports before the REJECT.
+  for rule in "-p tcp -m multiport --dports 80,443,8189" "-p udp -m multiport --dports 443,8189"; do
+    iptables -C INPUT $rule -j ACCEPT 2>/dev/null || iptables -I INPUT 1 $rule -j ACCEPT
+  done
+  command -v netfilter-persistent >/dev/null && netfilter-persistent save >/dev/null
+else
+  apt-get install -y ufw >/dev/null
+  ufw allow OpenSSH >/dev/null
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+  ufw allow 443/udp >/dev/null
+  ufw allow 8189/udp >/dev/null
+  ufw allow 8189/tcp >/dev/null
+  ufw --force enable >/dev/null
+fi
 
 say "Starting services"
 systemctl daemon-reload
@@ -143,14 +153,14 @@ systemctl is-active --quiet rangvasa-web || die "App server didn't start: journa
 
 cat <<EOF
 
-  Rangvasa Live is running.
+  RANGVAASA Live is running.
 
   Viewers   https://$DOMAIN
   Cameras   https://$DOMAIN/studio
   Admin     https://$DOMAIN/admin
 
-  If your provider has its own firewall (AWS, Oracle, Azure, ...), also open
-  TCP 80, 443, 8189 and UDP 8189 there.
+  If your provider has its own firewall (Oracle "security list", AWS, Azure, ...),
+  also open TCP 80, 443, 8189 and UDP 443, 8189 there.
 
   Logs: journalctl -u rangvasa-web -f    journalctl -u rangvasa-media -f
 EOF

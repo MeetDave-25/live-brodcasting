@@ -1,13 +1,16 @@
 (() => {
   const cfg = window.APP_CONFIG || {};
   const $ = (id) => document.getElementById(id);
-  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
+  // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
+  const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
   const preview = $("preview");
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
+  // The camera always captures 720p (phones' own 480p modes are soft) and the encoder scales down.
+  // start/min keep Chrome from opening blurry and creeping up from ~300 kbps.
   const QUALITY = {
-    hd:  { width: 1280, height: 720, bitrate: 1_500_000, label: "720p" },
-    sd:  { width: 854,  height: 480, bitrate: 800_000,   label: "480p" },
-    low: { width: 640,  height: 360, bitrate: 450_000,   label: "360p" },
+    hd:  { scale: 1,   bitrate: 2_500_000, start: 1500, min: 900, label: "720p" },
+    sd:  { scale: 1.5, bitrate: 1_200_000, start: 900,  min: 600, label: "480p" },
+    low: { scale: 2,   bitrate: 600_000,   start: 450,  min: 300, label: "360p" },
   };
   const store = {
     get: (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } },
@@ -28,6 +31,7 @@
   let facing = "environment";
   let reconnectTimer, statsTimer, clockTimer, wakeLock = null;
   let takenAngles = [];
+  let iceServers = []; // STUN/TURN from the server, so phones on other networks can connect
 
   function say(text, kind) {
     $("msg").textContent = text || "";
@@ -77,6 +81,7 @@
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Could not reach the server");
     takenAngles = j.live || [];
+    iceServers = j.iceServers || [];
   }
 
   $("setupForm").addEventListener("submit", async (e) => {
@@ -105,8 +110,7 @@
 
   // ---------- Camera ----------
   function videoConstraints() {
-    const q = QUALITY[settings.quality];
-    return { facingMode: facing, width: { ideal: q.width }, height: { ideal: q.height }, frameRate: { ideal: 30 } };
+    return { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
   }
   // Garba music: switch off the "voice call" filters that would muffle it
   const audioConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
@@ -117,6 +121,8 @@
     }
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: audioConstraints });
+    const vt = stream.getVideoTracks()[0];
+    if (vt && "contentHint" in vt) vt.contentHint = "motion"; // garba: keep movement fluid
     preview.srcObject = stream;
     preview.style.transform = facing === "user" ? "scaleX(-1)" : "";
     renderMic();
@@ -162,6 +168,20 @@
     if (!h264.length) say("This phone can't send H.264, so iPhone viewers may not see this angle. Use another phone if you can.", "err");
   }
 
+  // Tell the encoder where to start and the floor to hold (Chrome / Android), and allow the full bitrate.
+  function tuneBitrate(sdp, q) {
+    const maxKbps = Math.round(q.bitrate / 1000);
+    let inVideo = false;
+    return sdp.split("\r\n").map((line) => {
+      if (line.startsWith("m=")) inVideo = line.startsWith("m=video");
+      if (inVideo && line.startsWith("a=fmtp:") && !line.includes("x-google-start-bitrate")) {
+        return `${line};x-google-start-bitrate=${q.start};x-google-min-bitrate=${q.min};x-google-max-bitrate=${maxKbps}`;
+      }
+      if (inVideo && line.startsWith("c=")) return `${line}\r\nb=AS:${maxKbps}`;
+      return line;
+    }).join("\r\n");
+  }
+
   function waitForIce(conn) {
     return new Promise((resolve) => {
       if (conn.iceGatheringState === "complete") return resolve();
@@ -175,10 +195,10 @@
   async function publish(fresh) {
     closePc();
     const q = QUALITY[settings.quality];
-    pc = new RTCPeerConnection();
+    pc = new RTCPeerConnection({ iceServers });
     const vt = pc.addTransceiver(stream.getVideoTracks()[0], {
       direction: "sendonly",
-      sendEncodings: [{ maxBitrate: q.bitrate, maxFramerate: 30 }],
+      sendEncodings: [{ maxBitrate: q.bitrate, maxFramerate: 30, scaleResolutionDownBy: q.scale }],
     });
     videoSender = vt.sender;
     preferCodecs(vt);
@@ -195,7 +215,10 @@
         $("rec").hidden = false;
         if (navigator.vibrate) navigator.vibrate(40);
       } else if (st === "failed" || st === "disconnected") {
-        if (wantLive) reconnect("Signal lost. Reconnecting…");
+        if (!wantLive) return;
+        if (!liveSince && st === "failed") {
+          reconnect("Can't reach the laptop from this network. Join the laptop's Wi-Fi, or ask the organisers to turn on the camera relay. Retrying…");
+        } else reconnect("Signal lost. Reconnecting…");
       }
     });
 
@@ -221,11 +244,11 @@
       throw e;
     }
     if (!res.ok) throw new Error(`server replied ${res.status}`);
-    await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
+    await pc.setRemoteDescription({ type: "answer", sdp: tuneBitrate(await res.text(), q) });
 
     try {
       const p = videoSender.getParameters();
-      p.degradationPreference = "maintain-framerate"; // keep dancing smooth; drop sharpness first
+      p.degradationPreference = "balanced"; // on a weak signal, give up a little of both instead of all sharpness
       await videoSender.setParameters(p);
     } catch (_) {}
   }

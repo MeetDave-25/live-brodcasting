@@ -76,15 +76,25 @@ Camera phones ──(venue Wi-Fi)──► Laptop (start-event.bat) ──Cloudf
 - **Camera phones must be on the same Wi-Fi as the laptop.**
 - Without a `TUNNEL_TOKEN`, the script gives a temporary `trycloudflare.com` link, which is fine for testing with friends.
 
+**Camera phones on other networks (mobile data, college Wi-Fi):** a camera's video goes straight to the
+laptop, not through the tunnel. That works on the laptop's own Wi-Fi, and on networks where both sides have IPv6
+(e.g. Jio). For **every** network, turn on the free Cloudflare camera relay (TURN):
+Cloudflare dashboard → **Realtime → TURN Server → Create** → copy the **Key ID** and **API token** into `.env` as
+`TURN_KEY_ID` and `TURN_API_TOKEN`, then restart `start-event.bat`. An event uses a few GB, which is well inside Cloudflare's free allowance.
+
+**Temporary links die.** A `trycloudflare.com` test link is deleted if the laptop's internet drops even briefly,
+and you get a new address next time. For the event, use the permanent tunnel on your domain (steps above), and
+set `server` in `public/config.js` to it so the Vercel site always finds the laptop.
+
 **How many viewers your internet can carry.** Every viewer streams from the laptop, so the venue's **upload** speed sets the limit:
 
 | Camera quality | Upload needed per viewer | 400 viewers need |
 |---|---|---|
-| Standard 480p | ~0.9 Mbps | ~360 Mbps upload |
-| Saver 360p | ~0.55 Mbps | ~220 Mbps upload |
+| Standard 480p | ~1.2 Mbps | ~480 Mbps upload |
+| Saver 360p | ~0.65 Mbps | ~260 Mbps upload |
 
 Run a speed test on the laptop at the venue. If the upload is lower, set `MAX_VIEWERS` in `.env` to about
-*upload Mbps ÷ 0.9* (or ÷ 0.55 with Saver), so the people inside get smooth video and the rest see "Full house".
+*upload Mbps ÷ 1.2* (or ÷ 0.65 with Saver), so the people inside get smooth video and the rest see "Full house".
 A wired fibre line (Jio/Airtel 300 Mbps+ plans have high upload) is ideal.
 
 ## About Vercel / Netlify

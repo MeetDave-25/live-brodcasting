@@ -18,7 +18,8 @@
 
   // Shown when the pages are hosted without the app server (e.g. static hosting like Vercel)
   const NO_SERVER = "The live server isn't connected. Start it on the laptop (start-event.bat) and check the server address in config.js.";
-  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
+  // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
+  const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
 
   // Login token, kept for this browser tab (works across sites, unlike cookies)
   let token = "";

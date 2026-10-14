@@ -13,6 +13,9 @@ loadEnv(path.join(ROOT, ".env"));
 const PORT = Number(process.env.PORT) || 8080;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const BROADCAST_PASSWORD = process.env.BROADCAST_PASSWORD || "garba2026";
+// Optional Cloudflare TURN relay, so camera phones can connect from any network (mobile data, other Wi-Fi)
+const TURN_KEY_ID = process.env.TURN_KEY_ID || "";
+const TURN_API_TOKEN = process.env.TURN_API_TOKEN || "";
 // Most people who can watch at once. Everyone after that sees "Full house" and joins when a spot opens.
 const MAX_VIEWERS = Number(process.env.MAX_VIEWERS) || 400;
 const MTX = { hls: 8888, webrtc: 8889, api: 9997, playback: 9996 };
@@ -160,6 +163,56 @@ function mtxPaths(maxAge = 2000) {
 }
 const liveAngles = (items) => items.filter((p) => isAngle(p.name) && p.ready).map((p) => p.name);
 
+// ---------- Camera connectivity (STUN / TURN) ----------
+// Phones and the streaming engine both use these to find a path to each other.
+// STUN alone works on many networks; TURN relays the video when nothing else can.
+let iceServers = [{ urls: ["stun:stun.cloudflare.com:3478"] }];
+
+async function getTurnServers() {
+  const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_KEY_ID}/credentials/generate-ice-servers`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${TURN_API_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ttl: 172800 }), // 48 h: covers the whole event
+  });
+  if (!r.ok) throw new Error(`Cloudflare TURN replied ${r.status}`);
+  const j = await r.json();
+  const list = Array.isArray(j.iceServers) ? j.iceServers : [j.iceServers];
+  return list.filter(Boolean).map((s) => ({ ...s, urls: [].concat(s.urls) }));
+}
+
+// Give the streaming engine the same servers. Done once at start-up, because changing
+// them restarts the camera side of the engine (live phones would reconnect).
+async function setupIce() {
+  if (TURN_KEY_ID && TURN_API_TOKEN) {
+    try {
+      iceServers = await getTurnServers();
+      console.log("Camera relay (Cloudflare TURN) ready: phones can go live from any network.");
+    } catch (e) {
+      console.warn(`! Camera relay not available (${e.message}). Phones must be on the laptop's network.`);
+    }
+  } else {
+    console.log("No TURN_KEY_ID in .env: camera phones should join the laptop's Wi-Fi (see README).");
+  }
+  const mtxServers = iceServers.flatMap((s) => s.urls
+    .filter((u) => !/:53\b/.test(u)) // skip port-53 variants
+    .map((url) => ({ url, username: s.username || "", password: s.credential || "" })));
+  for (let i = 0; i < 20; i++) {
+    try {
+      const body = JSON.stringify({ webrtcICEServers2: mtxServers });
+      const ok = await new Promise((resolve) => {
+        const r = http.request({ host: "127.0.0.1", port: MTX.api, path: "/v3/config/global/patch", method: "PATCH",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } },
+          (res) => { res.resume(); resolve(res.statusCode === 200); });
+        r.on("error", () => resolve(false));
+        r.end(body);
+      });
+      if (ok) return;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 3000)); // engine may still be starting
+  }
+  console.warn("! Could not configure the streaming engine's camera connectivity.");
+}
+
 // ---------- Viewers: each open app checks in every few seconds ----------
 const viewers = new Map(); // id -> { t, angle }
 function pruneViewers() {
@@ -225,7 +278,7 @@ async function api(req, res, url) {
     if (isLocked(ip)) return send(res, 429, { error: "Too many wrong passwords. Wait 10 minutes." });
     const { password } = JSON.parse((await readBody(req)) || "{}");
     if (!safeEqual(password || "", BROADCAST_PASSWORD)) { noteFail(ip); return send(res, 401, { error: "Wrong password" }); }
-    return send(res, 200, { ok: true, live: liveAngles(await mtxPaths(0)) });
+    return send(res, 200, { ok: true, live: liveAngles(await mtxPaths(0)), iceServers });
   }
 
   if (route === "/api/admin/login" && req.method === "POST") {
@@ -382,6 +435,11 @@ http.createServer(async (req, res) => {
       return proxy(req, res, MTX.webrtc, `/${whip[1]}/whip`, { headers });
     }
 
+    // Lets pages know they're being served by the live server itself (so they talk to it directly)
+    if (url.pathname === "/server-info.js") {
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" });
+      return res.end("window.LIVE_SERVER_HERE = true;\n");
+    }
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { error: "Method not allowed" });
     serveStatic(req, res, url.pathname);
@@ -389,6 +447,7 @@ http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, 400, { error: "Bad request" });
   }
 }).listen(PORT, () => {
+  setupIce();
   console.log(`RANGVAASA Live on http://localhost:${PORT}`);
   console.log(`  Go live: http://localhost:${PORT}/studio    Admin: http://localhost:${PORT}/admin`);
 });

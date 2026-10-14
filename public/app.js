@@ -6,7 +6,8 @@
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
   const angleName = (id) => (ANGLES.find((a) => a.id === id) || { name: id }).name;
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const API = (cfg.server || "").replace(/\/+$/, ""); // live server ("" = this site)
+  // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
+  const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
 
   // ---------- Text from config ----------
   document.querySelectorAll("[data-cfg]").forEach((el) => { if (cfg[el.dataset.cfg]) el.textContent = cfg[el.dataset.cfg]; });

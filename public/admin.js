@@ -16,10 +16,14 @@
     toastTimer = setTimeout(() => t.classList.remove("in"), 3000);
   }
 
+  // Shown when the pages are hosted without the app server (e.g. static hosting like Vercel)
+  const NO_SERVER = "The live server isn't connected. Cameras and the control room need the streaming server running on your VPS (see README).";
+
   async function api(path, body) {
     const r = await fetch(path, body === undefined ? { cache: "no-store" } : {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
+    if (!(r.headers.get("content-type") || "").includes("json")) throw new Error(NO_SERVER);
     const j = await r.json().catch(() => ({}));
     if (r.status === 401 && path !== "/api/admin/login") { showLogin(); throw new Error("Please log in"); }
     if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
@@ -247,5 +251,11 @@
   });
 
   // ---------- Start: already logged in? ----------
-  fetch("/api/admin/overview", { cache: "no-store" }).then((r) => (r.ok ? showDash() : showLogin())).catch(showLogin);
+  fetch("/api/admin/overview", { cache: "no-store" })
+    .then((r) => {
+      if (r.ok) return showDash();
+      showLogin();
+      if (!(r.headers.get("content-type") || "").includes("json")) $("loginErr").textContent = NO_SERVER;
+    })
+    .catch(() => { showLogin(); $("loginErr").textContent = NO_SERVER; });
 })();

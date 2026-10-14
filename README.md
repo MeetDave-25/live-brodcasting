@@ -52,6 +52,13 @@ Camera phones (/studio)            Your server                         Viewers (
 
 Phones can't use their camera over plain `http://`, so test phones against the real server.
 
+## About Vercel / Netlify
+
+This repo includes a `vercel.json`, so the pages (`/`, `/studio`, `/admin`) open on Vercel. But Vercel only
+serves static files: it **can't run the live server** (camera uploads, video, admin login, recordings).
+On Vercel the camera and control-room pages say "The live server isn't connected".
+For the real event, run everything on a VPS as described below.
+
 ## Put it on your domain
 
 Your domain stays where it is. You only add a **subdomain** pointing to a small server.

@@ -70,6 +70,9 @@
     const r = await fetch("/api/studio/check", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pass }),
     });
+    if (!(r.headers.get("content-type") || "").includes("json")) {
+      throw new Error("The live server isn't connected. Going live needs the streaming server running on your VPS.");
+    }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || "Could not reach the server");
     takenAngles = j.live || [];

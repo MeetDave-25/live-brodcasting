@@ -7,3 +7,5 @@ server/mediamtx.prod.yml
 tools/
 server/mediamtx.log
 server/event-console.log
+worker/node_modules/
+worker/.wrangler/

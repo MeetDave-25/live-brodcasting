@@ -2,7 +2,7 @@
 // mode "embed": phones stream to YouTube/Facebook (Larix app) and the website plays those - no laptop.
 // mode "server": phones use our /studio page and the laptop server (start-event.bat).
 window.LIVE = {
-  "mode": "embed",
+  "mode": "server",
   "main": "cam1",
   "announcement": "",
   "updated": "",

@@ -1,0 +1,14 @@
+# RANGVAASA Live cloud relay (Cloudflare Worker). Deploy: see README "Cloud relay".
+name = "rangvaasa-live"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+# Cloudflare dashboard -> Realtime -> SFU -> your app -> App ID
+CALLS_APP_ID = ""
+
+# KV namespace that remembers which angles are live (id filled in by the setup)
+[[kv_namespaces]]
+binding = "LIVE"
+id = ""

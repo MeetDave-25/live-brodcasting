@@ -4,6 +4,9 @@ window.APP_CONFIG = {
   // When the pages are on Vercel, put the laptop's tunnel address here, e.g. "https://live.yourdomain.com"
   server: "https://opt-tons-swim-let.trycloudflare.com",
 
+  // Cloud relay (Cloudflare Worker) used when live.js mode is "cloud": phones -> Cloudflare -> viewers, no laptop
+  cloud: "",
+
   // GitHub repository the /publish page saves live links to
   repo: "MeetDave-25/live-brodcasting",
 

@@ -9,6 +9,11 @@
   // "embed" mode: phones stream to YouTube/Facebook and we play those here (no laptop needed)
   let LIVE = window.LIVE || { mode: "server" };
   const EMBED = LIVE.mode === "embed";
+  // "cloud" mode: watch the camera through the Cloudflare relay (WebRTC, under a second of delay)
+  const CLOUD = LIVE.mode === "cloud" && (cfg.cloud || "").replace(/\/+$/, "");
+  let rtc = null;
+  let cloudLive = [];
+  let cloudPolledAt = 0;
   const useFacebook = {}; // angle -> viewer chose the Facebook copy
   // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
   const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
@@ -263,6 +268,8 @@
 
   // ---------- Player ----------
   function stopPlayer() {
+    if (rtc) { rtc.close(); rtc = null; }
+    if (video.srcObject) video.srcObject = null;
     if (hls) { hls.destroy(); hls = null; }
     video.removeAttribute("src");
     video.load();
@@ -340,7 +347,9 @@
       $("poster").hidden = true;
       $("hudAngle").textContent = angleName(angle);
       const src = `${API}/${angle}/index.m3u8?t=${viewerId}`; // ticket = this viewer's spot
-      if (window.Hls && Hls.isSupported()) {
+      if (CLOUD) {
+        playCloud(angle);
+      } else if (window.Hls && Hls.isSupported()) {
         hls = new Hls({ backBufferLength: 30, maxLiveSyncPlaybackRate: 1.1 });
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (!d.fatal) return;
@@ -365,6 +374,32 @@
       video.muted = true; // browsers block autoplay with sound until the viewer taps
       video.play().catch(() => {});
     }).finally(renderSound);
+  }
+
+  async function playCloud(angle) {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] });
+    rtc = pc;
+    const ms = new MediaStream();
+    pc.ontrack = (e) => {
+      ms.addTrack(e.track);
+      if (video.srcObject !== ms) video.srcObject = ms;
+      video.play().catch(() => {});
+    };
+    pc.onconnectionstatechange = () => { if (rtc === pc && pc.connectionState === "failed") lost(); };
+    try {
+      const r = await fetch(`${CLOUD}/watch/${angle}`, { method: "POST" });
+      if (!r.ok) throw new Error("off air");
+      const j = await r.json();
+      if (rtc !== pc) return;
+      await pc.setRemoteDescription({ type: "offer", sdp: j.sdp });
+      await pc.setLocalDescription(await pc.createAnswer());
+      const a = await fetch(`${CLOUD}/answer/${j.sessionId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sdp: pc.localDescription.sdp }),
+      });
+      if (!a.ok) throw new Error("answer failed");
+    } catch (_) {
+      if (rtc === pc) { cloudPolledAt = 0; lost(); }
+    }
   }
 
   // Lost the stream: show a spinner and check again shortly
@@ -507,6 +542,23 @@
     if (refreshing && !force) return;
     refreshing = true;
     try {
+      if (CLOUD) {
+        try { LIVE = await readLiveFile(); } catch (_) {}
+        // Ask the relay often while waiting, rarely while watching (keeps within the free plan)
+        if (force || Date.now() - cloudPolledAt > (current ? 90000 : 15000)) {
+          try { cloudLive = (await (await fetch(`${CLOUD}/live`, { cache: "no-store" })).json()).live || []; } catch (_) {}
+          cloudPolledAt = Date.now();
+        }
+        status = {
+          live: cloudLive, featured: LIVE.main, announcement: LIVE.announcement || "",
+          announcedAt: LIVE.announcement ? LIVE.updated : null, watching: 0, admitted: true,
+        };
+        renderPoster();
+        const next = pickAngle();
+        if (next !== current || (next && !rtc)) show(next);
+        renderAngles(); renderPill(); renderNotice();
+        return;
+      }
       if (EMBED) {
         try { LIVE = await readLiveFile(); } catch (_) { /* keep what we have */ }
         status = embedStatus();
@@ -531,7 +583,7 @@
     }
   }
   refresh();
-  setInterval(refresh, EMBED ? 20000 : 5000);
+  setInterval(refresh, EMBED || CLOUD ? 20000 : 5000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   addEventListener("online", () => refresh());
   addEventListener("offline", renderPill);

@@ -1,6 +1,8 @@
 (() => {
   const cfg = window.APP_CONFIG || {};
   if ((window.LIVE || {}).mode === "embed") { location.replace("publish#camera"); return; }
+  // "cloud" mode: go live through the Cloudflare relay instead of the laptop
+  const CLOUD = (window.LIVE || {}).mode === "cloud" && (cfg.cloud || "").replace(/\/+$/, "");
   const $ = (id) => document.getElementById(id);
   // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
   const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
@@ -73,7 +75,7 @@
   function closeSheet() { $("sheet").classList.remove("open"); }
 
   async function checkPassword(pass) {
-    const r = await fetch(`${API}/api/studio/check`, {
+    const r = await fetch(CLOUD ? `${CLOUD}/check` : `${API}/api/studio/check`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: pass }),
     });
     if (!(r.headers.get("content-type") || "").includes("json")) {
@@ -225,6 +227,26 @@
 
     await pc.setLocalDescription(await pc.createOffer());
     await waitForIce(pc);
+    if (CLOUD) {
+      // Cloud relay: send the offer plus which track is which; Cloudflare answers
+      const tracks = pc.getTransceivers().filter((t) => t.sender.track)
+        .map((t) => ({ mid: t.mid, trackName: t.sender.track.kind }));
+      const r = await fetch(`${CLOUD}/publish/${settings.angle}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.pass}` },
+        body: JSON.stringify({ sdp: pc.localDescription.sdp, tracks }),
+      });
+      if (r.status === 401) { const e = new Error("Wrong camera password."); e.fatal = true; throw e; }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `cloud replied ${r.status}`);
+      await pc.setRemoteDescription({ type: "answer", sdp: tuneBitrate(j.sdp, q) });
+      try {
+        const p = videoSender.getParameters();
+        p.degradationPreference = "balanced";
+        await videoSender.setParameters(p);
+      } catch (_) {}
+      return;
+    }
     const res = await fetch(`${API}/whip/${settings.angle}`, {
       method: "POST",
       headers: {
@@ -297,6 +319,9 @@
   }
 
   function stopLive(reason) {
+    if (CLOUD && wantLive) {
+      fetch(`${CLOUD}/end/${settings.angle}`, { method: "POST", headers: { Authorization: `Bearer ${settings.pass}` } }).catch(() => {});
+    }
     wantLive = false;
     clearTimeout(reconnectTimer);
     clearInterval(statsTimer);

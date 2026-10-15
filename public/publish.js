@@ -48,7 +48,7 @@
       box.append(card);
     });
     $("announce").value = data.announcement || "";
-    const m = document.querySelector(`input[name=mode][value=${data.mode === "server" ? "server" : "embed"}]`);
+    const m = document.querySelector(`input[name=mode][value=${["server", "cloud"].includes(data.mode) ? data.mode : "embed"}]`);
     if (m) m.checked = true;
     $("note").textContent = data.updated ? `Last published ${new Date(data.updated).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : "";
   }

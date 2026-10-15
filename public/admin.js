@@ -75,6 +75,8 @@
     showLogin();
   });
 
+  let lastSuffix = "";
+
   // ---------- Angle cards ----------
   const cards = {};
   ANGLES.forEach((a) => {
@@ -112,7 +114,7 @@
     c.video.autoplay = true;
     c.frame.querySelector(".off").hidden = true;
     c.frame.append(c.video);
-    const src = `${API}/${id}/index.m3u8?a=${token}`;
+    const src = `${API}/${id}${lastSuffix}/index.m3u8?a=${token}`;
     if (window.Hls && Hls.isSupported()) {
       c.hls = new Hls({ backBufferLength: 10 });
       c.hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) stopPreview(c); });
@@ -334,6 +336,7 @@
   async function poll() {
     try {
       const data = await api("/api/admin/overview");
+      lastSuffix = data.suffix || "";
       renderAngles(data);
       renderRecordings(data.recordings);
       renderServer(data.server);

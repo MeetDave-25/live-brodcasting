@@ -104,7 +104,7 @@ cat > /etc/caddy/sites/rangvasa.caddy <<EOF
 $DOMAIN {
 	encode gzip
 	# Live video goes straight to the streaming engine
-	@video path_regexp ^/cam[1-6]/
+	@video path_regexp ^/cam[1-6]x?/
 	handle @video {
 		reverse_proxy 127.0.0.1:8888
 	}

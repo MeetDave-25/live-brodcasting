@@ -61,6 +61,11 @@ webrtcLocalTCPAddress: :8189
 webrtcAdditionalHosts: []
 
 paths:
+  # Viewer copies (cam1x ... cam6x): the laptop re-encodes each angle with a keyframe
+  # every 2 s, so players start fast. Not recorded (the originals are).
+  "~^cam[1-6]x$":
+    record: false
+
   # Camera angles cam1 ... cam6, each recorded to server/recordings/<angle>/
   "~^cam[1-6]$":
     record: true

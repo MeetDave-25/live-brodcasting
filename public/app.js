@@ -346,7 +346,7 @@
       video.hidden = false;
       $("poster").hidden = true;
       $("hudAngle").textContent = angleName(angle);
-      const src = `${API}/${angle}/index.m3u8?t=${viewerId}`; // ticket = this viewer's spot
+      const src = `${API}/${angle}${status.suffix || ""}/index.m3u8?t=${viewerId}`; // ticket = this viewer's spot
       if (CLOUD) {
         playCloud(angle);
       } else if (window.Hls && Hls.isSupported()) {
@@ -423,7 +423,7 @@
     if (EMBED) return; // YouTube/Facebook players handle their own buffering
     if (!current || (video.paused && video.readyState >= 2)) { frozen = 0; return; }
     if (video.currentTime === lastT) frozen += 2; else { frozen = 0; lastT = video.currentTime; }
-    if (frozen >= 10) {
+    if (frozen >= 16) {
       frozen = 0; lastT = -1;
       // Second freeze in a row on this angle: try another live angle for 30 s
       restarts[current] = (restarts[current] || 0) + 1;

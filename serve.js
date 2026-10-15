@@ -277,7 +277,7 @@ const workers = new Map(); // destination id -> { proc, angle, status, error, si
 
 function ffmpegArgs(d, angle) {
   const target = `${d.url.replace(/\/+$/, "")}/${d.key}`;
-  const input = ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", `rtsp://127.0.0.1:8554/${angle}`];
+  const input = ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", `rtsp://127.0.0.1:8554/${angle}${COPY_SUFFIX}`];
   const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2"];
   const video = d.vertical
     ? ["-vf", "scale=720:-2,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-c:v", "libx264", "-preset", "veryfast",
@@ -349,6 +349,68 @@ function restreamView() {
   };
 }
 
+// ---------- Viewer copies: a keyframe every 2 seconds ----------
+// Phone encoders over WebRTC send a full picture (keyframe) only every 20-30 s. Players can't start
+// until they get one, so viewers would wait forever. For each live angle we make a viewer copy
+// (camNx) re-encoded with a keyframe every 2 s. Uses the Intel/AMD/NVIDIA video encoder when
+// available (almost no CPU), otherwise x264. Originals are still what gets recorded.
+let VIDEO_ENCODER = null;
+if (ffmpegOk) {
+  for (const enc of ["h264_qsv", "h264_nvenc", "h264_amf"]) {
+    try {
+      execFileSync(FFMPEG, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30",
+        "-t", "1", "-c:v", enc, "-f", "null", "-"], { stdio: "ignore", timeout: 15000 });
+      VIDEO_ENCODER = enc;
+      break;
+    } catch {}
+  }
+  if (!VIDEO_ENCODER) VIDEO_ENCODER = "libx264";
+  console.log(`Viewer copies: keyframe every 2 s, encoder ${VIDEO_ENCODER}`);
+}
+const COPY_SUFFIX = ffmpegOk ? "x" : "";   // viewers watch camNx (or camN if FFmpeg is missing)
+
+function transcodeArgs(angle) {
+  const keyframes = ["-g", "60", "-force_key_frames", "expr:gte(t,n_forced*2)"];
+  const enc = VIDEO_ENCODER === "libx264"
+    ? ["-c:v", "libx264", "-preset", "superfast", "-tune", "zerolatency", "-sc_threshold", "0", "-pix_fmt", "yuv420p", ...keyframes]
+    : VIDEO_ENCODER === "h264_qsv"
+      ? ["-c:v", "h264_qsv", "-preset", "veryfast", "-idr_interval", "0", "-forced_idr", "1", ...keyframes]
+      : ["-c:v", VIDEO_ENCODER, "-forced-idr", "1", ...keyframes];
+  return ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", `rtsp://127.0.0.1:8554/${angle}`,
+    "-map", "0:v:0", "-map", "0:a:0?", "-r", "30", ...enc, "-b:v", "1600k", "-maxrate", "2000k", "-bufsize", "3200k",
+    "-c:a", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", `rtsp://127.0.0.1:8554/${angle}x`];
+}
+
+const transcoders = new Map(); // angle -> { proc, retryAt, fails }
+function syncTranscoders(live) {
+  if (!ffmpegOk) return;
+  for (const angle of ANGLES) {
+    const t = transcoders.get(angle);
+    if (!live.includes(angle)) {
+      if (t && t.proc) { t.stopping = true; try { t.proc.kill("SIGKILL"); } catch {} }
+      transcoders.delete(angle);
+      continue;
+    }
+    if (t && (t.proc || Date.now() < t.retryAt)) continue;
+    const fails = t ? t.fails : 0;
+    const proc = spawn(FFMPEG, transcodeArgs(angle), { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+    const w = { proc, fails, retryAt: 0 };
+    let err = "";
+    proc.stderr.on("data", (c) => { err = (err + c).slice(-400); });
+    proc.on("error", () => {});
+    proc.on("exit", () => {
+      if (w.stopping || transcoders.get(angle) !== w) return;
+      w.proc = null;
+      w.fails++;
+      w.retryAt = Date.now() + Math.min(20000, 2000 * w.fails);
+      if (err.trim()) console.warn(`! Viewer copy of ${angle} stopped: ${err.trim().split(/\r?\n/).pop()}`);
+    });
+    transcoders.set(angle, w);
+  }
+}
+setInterval(() => { mtxPaths().then((items) => syncTranscoders(liveAngles(items))).catch(() => {}); }, 2000);
+process.on("exit", () => { for (const t of transcoders.values()) if (t.proc) try { t.proc.kill(); } catch {} });
+
 // A YouTube link the admin pasted, used to send overflow viewers to the YouTube copy
 function overflowVideoId() {
   const d = destinations.find((x) => x.enabled && x.platform === "youtube" && x.watchUrl);
@@ -415,6 +477,7 @@ async function api(req, res, url) {
       admitted,
       ticket: admitted ? id : null,
       overflow: admitted ? null : overflowVideoId(),
+      suffix: COPY_SUFFIX,
     }, headers);
   }
 
@@ -478,7 +541,7 @@ async function api(req, res, url) {
       }));
       const [sha, date, subject] = VERSION.split("|");
       return send(res, 200, {
-        angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state, restream: restreamView(),
+        angles, recordings, watching: viewers.size, capacity: MAX_VIEWERS, state, restream: restreamView(), suffix: COPY_SUFFIX,
         server: { version: sha || null, versionDate: date || null, versionNote: subject || null, started: STARTED,
                   canUpdate: CAN_UPDATE, relay: iceServers.some((s) => s.urls.some((u) => u.startsWith("turn"))) },
       });
@@ -609,7 +672,7 @@ function serveStatic(req, res, pathname) {
 // ---------- Router ----------
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (/^\/(api|whip|cam[1-6])\b/.test(url.pathname)) {
+  if (/^\/(api|whip|cam[1-6]x?)\b/.test(url.pathname)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Go-Live");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
@@ -618,7 +681,7 @@ http.createServer(async (req, res) => {
   }
   try {
     // Viewers' video (on the real server Caddy sends this straight to MediaMTX)
-    if (/^\/cam[1-6]\//.test(url.pathname)) {
+    if (/^\/cam[1-6]x?\//.test(url.pathname)) {
       if (!hasViewerSpot(req, url) && !isAdmin(req)) return send(res, 403, { error: "Full house" });
       return proxyHls(req, res, url);
     }

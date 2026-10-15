@@ -49,19 +49,26 @@ echo   App running on this laptop:  http://localhost:8080
 echo   Camera phones on this Wi-Fi: use the public link below + /studio
 echo.
 
-if defined TUNNEL_TOKEN (
-  echo   Going online through your Cloudflare Tunnel...
-  echo   Viewers: https://YOUR-DOMAIN   Cameras: /studio   Control room: /admin
-  echo.
-  tools\cloudflared.exe tunnel --no-autoupdate run --token %TUNNEL_TOKEN%
-) else (
-  echo   No TUNNEL_TOKEN in .env, so using a temporary test link.
-  echo   Look for the https://....trycloudflare.com address below.
-  echo   Test links handle only a small audience - set up your domain for the event.
-  echo.
-  tools\cloudflared.exe tunnel --no-autoupdate --url http://localhost:8080
-)
-goto :eof
+if defined TUNNEL_TOKEN goto :named
+
+echo   No TUNNEL_TOKEN in .env, so using a temporary link.
+echo   The website is updated to the new link automatically - keep the windows open.
+echo.
+start "RANGVAASA - website link" /min cmd /c "cd /d "%~dp0" && node deploy\keep-link.js"
+:quick
+tools\cloudflared.exe tunnel --no-autoupdate --metrics 127.0.0.1:20241 --url http://localhost:8080
+echo   Tunnel stopped - starting a new one in 3 seconds...
+timeout /t 3 /nobreak >nul
+goto :quick
+
+:named
+echo   Going online through your Cloudflare Tunnel...
+echo   Viewers: https://YOUR-DOMAIN   Cameras: /studio   Control room: /admin
+echo.
+tools\cloudflared.exe tunnel --no-autoupdate run --token %TUNNEL_TOKEN%
+echo   Tunnel stopped - reconnecting in 3 seconds...
+timeout /t 3 /nobreak >nul
+goto :named
 
 :fail
 echo Download failed. Check the internet connection and try again.

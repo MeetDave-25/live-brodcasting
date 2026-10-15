@@ -6,3 +6,4 @@ server/bin-linux/
 server/mediamtx.prod.yml
 tools/
 server/mediamtx.log
+server/event-console.log

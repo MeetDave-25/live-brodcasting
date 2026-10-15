@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>RANGVAASA · Publish</title>
+  <meta name="theme-color" content="#0d0a1a">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <script src="theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400..700&family=Baloo+Bhai+2:wght@600..800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="publish.css">
+  <script src="config.js"></script>
+  <script src="live.js"></script>
+  <script src="publish.js" defer></script>
+</head>
+<body class="admin">
+  <div class="ambient" aria-hidden="true"></div>
+  <header class="bar">
+    <a class="mark" href="./">
+      <img class="logo" src="icon.svg" alt="">
+      <span class="mark-text">
+        <span class="mark-name"><span data-cfg="name">RANGVAASA</span><b data-cfg="year">2026</b></span>
+        <span class="mark-sub">Publish · no laptop</span>
+      </span>
+    </a>
+    <div class="bar-right">
+      <button class="round-btn" id="themeBtn" aria-label="Switch theme"></button>
+    </div>
+  </header>
+
+  <main class="admin-main">
+    <section class="block">
+      <p class="kicker">How it works</p>
+      <h1 class="pub-title">Phones go live, <em>everyone</em> watches</h1>
+      <p class="sec-sub">Each camera phone streams to YouTube (and Facebook as a backup) with the free Larix app.
+        Paste each live link below and press Publish: our website plays them in about 30 seconds.</p>
+    </section>
+
+    <!-- Links -->
+    <section class="block" id="links">
+      <div class="block-head"><h2 class="block-title">Live <em>links</em></h2></div>
+      <div class="pub-angles" id="angles"></div>
+
+      <label class="field"><span>Announcement for viewers (optional)</span>
+        <textarea id="announce" maxlength="280" rows="2" placeholder="e.g. Awards begin in 10 minutes"></textarea>
+      </label>
+
+      <fieldset class="field pub-mode">
+        <legend>Video comes from</legend>
+        <label class="check"><input type="radio" name="mode" value="embed"> Phones → YouTube / Facebook (no laptop)</label>
+        <label class="check"><input type="radio" name="mode" value="server"> Our laptop server (start-event.bat)</label>
+      </fieldset>
+
+      <p class="form-err" id="err"></p>
+      <button class="btn pub-go" id="publishBtn" type="button">Publish to the website</button>
+      <p class="fine" id="note"></p>
+    </section>
+
+    <!-- GitHub key -->
+    <section class="block" id="key">
+      <div class="block-head"><h2 class="block-title">Publish <em>key</em></h2><p class="eyebrow" id="keyState">Not set</p></div>
+      <details class="pub-help" id="keyHelp">
+        <summary>One-time: create the key on github.com (3 minutes)</summary>
+        <ol>
+          <li>On github.com (signed in) → your photo → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
+          <li>Name: <i>rangvaasa publish</i>. Expiration: 30 days.</li>
+          <li>Repository access: <b>Only select repositories</b> → <i>live-brodcasting</i>.</li>
+          <li>Permissions → Repository permissions → <b>Contents: Read and write</b>.</li>
+          <li><b>Generate token</b>, copy it, paste it below. It stays only on this phone.</li>
+        </ol>
+      </details>
+      <label class="field"><span>GitHub key</span><input id="token" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+      <div class="announce-row">
+        <span class="spacer"></span>
+        <button class="btn btn-quiet" id="forget" type="button">Forget key</button>
+        <button class="btn" id="saveKey" type="button">Save key on this phone</button>
+      </div>
+    </section>
+
+    <!-- Camera guide -->
+    <section class="block" id="camera">
+      <div class="block-head"><h2 class="block-title">Camera <em>phones</em></h2><p class="eyebrow">Larix Broadcaster</p></div>
+      <div class="pub-steps">
+        <article class="ticket"><span class="tile">1</span><p class="label">Get the app</p><h3>Install Larix Broadcaster</h3>
+          <p class="t-note">Free on Play Store and App Store.</p></article>
+        <article class="ticket"><span class="tile">2</span><p class="label">YouTube (each angle)</p><h3>Schedule a stream</h3>
+          <p class="t-note">YouTube Studio → Create → Go live → Manage → <b>Schedule stream</b>. Title e.g. "RANGVAASA · Main stage",
+          visibility Public or Unlisted, <b>allow embedding</b>. Choose a <b>new stream key</b> for each angle.
+          Copy the <b>stream key</b> (for Larix) and the <b>share link</b> (paste above).</p></article>
+        <article class="ticket"><span class="tile">3</span><p class="label">Facebook (main camera)</p><h3>Backup copy</h3>
+          <p class="t-note">facebook.com/live/producer → Go live → <b>Streaming software</b> → copy the <b>stream key</b>.
+          After going live, copy the video's link and paste it above for that angle.</p></article>
+        <article class="ticket"><span class="tile">4</span><p class="label">In Larix</p><h3>Add connections</h3>
+          <p class="t-note">Settings → Connections → <b>+</b>. Name "YouTube", URL:</p>
+          <p class="pub-url"><code>rtmp://a.rtmp.youtube.com/live2/</code><i>STREAM-KEY</i> <button class="copy" data-copy="rtmp://a.rtmp.youtube.com/live2/">Copy</button></p>
+          <p class="t-note">Add another, "Facebook", URL:</p>
+          <p class="pub-url"><code>rtmps://live-api-s.facebook.com:443/rtmp/</code><i>STREAM-KEY</i> <button class="copy" data-copy="rtmps://live-api-s.facebook.com:443/rtmp/">Copy</button></p>
+          <p class="t-note">Tick both connections to stream to both at once.</p></article>
+        <article class="ticket"><span class="tile">5</span><p class="label">Video settings</p><h3>720p, 30 fps</h3>
+          <p class="t-note">Settings → Video: <b>1280×720</b>, <b>30 fps</b>, bitrate <b>2500 kbps</b> (1500 if streaming to both on weak Wi-Fi),
+          keyframe frequency <b>2 s</b>. Audio: AAC 128 kbps.</p></article>
+        <article class="ticket"><span class="tile">6</span><p class="label">On the night</p><h3>Landscape, plugged in</h3>
+          <p class="t-note">Hold the phone sideways, power bank on, Do Not Disturb on, then the red button in Larix.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <button class="toast" id="toast" type="button"></button>
+</body>
+</html>

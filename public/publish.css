@@ -1,0 +1,25 @@
+/* ============ Publish page (no-laptop mode) ============ */
+.pub-title { font: 800 clamp(2rem, 9vw, 3rem)/1.02 var(--serif); letter-spacing: -.025em; margin: 12px 0 10px; }
+.pub-angles { display: grid; gap: 12px; margin-bottom: 16px; }
+@media (min-width: 760px) { .pub-angles { grid-template-columns: 1fr 1fr; } }
+.pub-angle { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+.pub-angle-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.pub-angle .field { margin-bottom: 10px; }
+.pub-angle input, .admin textarea#announce {
+  width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper-2); color: var(--ink); font: inherit; font-size: .95rem;
+}
+.pub-mode { border: 0; padding: 0; margin: 14px 0; display: grid; gap: 6px; }
+.pub-mode legend { font-size: .8rem; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.pub-go { width: 100%; min-height: 58px; font-size: 1.05rem; }
+.pub-help { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px; }
+.pub-help summary { cursor: pointer; font-weight: 600; }
+.pub-help ol { margin: 12px 0 4px; padding-left: 20px; color: var(--ink-2); font-size: .92rem; display: grid; gap: 6px; }
+.pub-steps { display: grid; gap: 12px; }
+@media (min-width: 760px) { .pub-steps { grid-template-columns: 1fr 1fr; } }
+.pub-steps .ticket { grid-template-columns: auto 1fr; align-items: start; }
+.pub-steps .tile { font: 800 1.2rem var(--serif); }
+.pub-url { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; grid-column: 2; }
+.pub-url code { font: 600 .8rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.pub-url i { font-size: .8rem; color: var(--gold); }
+.pub-steps .t-note { grid-column: 2; }

@@ -1,5 +1,6 @@
 (() => {
   const cfg = window.APP_CONFIG || {};
+  if ((window.LIVE || {}).mode === "embed") { location.replace("publish#camera"); return; }
   const $ = (id) => document.getElementById(id);
   // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
   const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");

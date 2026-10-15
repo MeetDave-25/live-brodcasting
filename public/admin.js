@@ -1,5 +1,6 @@
 (() => {
   const cfg = window.APP_CONFIG || {};
+  if ((window.LIVE || {}).mode === "embed") { location.replace("publish"); return; }
   const $ = (id) => document.getElementById(id);
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
   const angleName = (id) => (ANGLES.find((a) => a.id === id) || { name: id }).name;

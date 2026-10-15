@@ -6,6 +6,10 @@
   const ANGLES = cfg.angles && cfg.angles.length ? cfg.angles : [{ id: "cam1", name: "Main stage" }];
   const angleName = (id) => (ANGLES.find((a) => a.id === id) || { name: id }).name;
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // "embed" mode: phones stream to YouTube/Facebook and we play those here (no laptop needed)
+  let LIVE = window.LIVE || { mode: "server" };
+  const EMBED = LIVE.mode === "embed";
+  const useFacebook = {}; // angle -> viewer chose the Facebook copy
   // Live server: this site when the laptop serves the page, otherwise config.server (e.g. from Vercel)
   const API = window.LIVE_SERVER_HERE ? "" : (cfg.server || "").replace(/\/+$/, "");
 
@@ -185,7 +189,7 @@
     if (isFull()) { pill.classList.add("is-off"); label.textContent = "Full house"; return; }
     if (current) {
       pill.classList.add("is-live");
-      label.textContent = status.watching > 1 ? `Live · ${status.watching.toLocaleString()}` : "Live";
+      label.textContent = !EMBED && status.watching > 1 ? `Live · ${status.watching.toLocaleString()}` : "Live";
       if (status.watching > 1) label.append(Object.assign(document.createElement("span"), { className: "w-long", textContent: " watching" }));
     } else if (hasStart && Date.now() < start) {
       label.textContent = "Upcoming";
@@ -264,8 +268,63 @@
     video.load();
   }
 
+  function embedUrl(angle) {
+    const l = (LIVE.angles || {})[angle] || {};
+    const yt = (l.youtube || "").match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/|\/shorts\/)([\w-]{11})/);
+    if (yt && !(useFacebook[angle] && l.facebook)) {
+      return `https://www.youtube-nocookie.com/embed/${yt[1]}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`;
+    }
+    if (l.facebook) {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(l.facebook)}&show_text=false&autoplay=true&mute=true&width=1280`;
+    }
+    return null;
+  }
+  function renderAltSource() {
+    const b = $("altSource");
+    const l = (current && (LIVE.angles || {})[current]) || {};
+    b.hidden = !(EMBED && current && l.youtube && l.facebook);
+    b.textContent = useFacebook[current] ? "Video not playing? Watch the YouTube copy" : "Video not playing? Watch the Facebook copy";
+  }
+  $("altSource").addEventListener("click", () => {
+    useFacebook[current] = !useFacebook[current];
+    const f = $("embedFrame");
+    if (f) f.remove();
+    show(current);
+  });
+
+  function showEmbed(angle) {
+    let f = $("embedFrame");
+    const src = angle && embedUrl(angle);
+    if (!src) { if (f) f.remove(); return; }
+    if (f && f.dataset.src === src) return;
+    if (!f) {
+      f = document.createElement("iframe");
+      f.id = "embedFrame";
+      f.title = "Live stream";
+      f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write";
+      f.allowFullscreen = true;
+      $("screen").append(f);
+    }
+    f.dataset.src = src;
+    f.src = src;
+  }
+
   function show(angle) {
     current = angle;
+    if (EMBED) {
+      wasLive = wasLive || !!angle;
+      video.hidden = true;
+      $("poster").hidden = !!angle;
+      $("buffer").hidden = true;
+      $("soundHint").hidden = true;
+      screenEl.classList.remove("show-hud");
+      showEmbed(angle);
+      if (!angle) renderPoster();
+      renderAngles();
+      renderPill();
+      renderAltSource();
+      return;
+    }
     if (angle) showOverflow(null);
     stopPlayer();
     $("buffer").hidden = true;
@@ -326,6 +385,7 @@
   const restarts = {};
   video.addEventListener("playing", () => { if (current) restarts[current] = 0; });
   setInterval(() => {
+    if (EMBED) return; // YouTube/Facebook players handle their own buffering
     if (!current || (video.paused && video.readyState >= 2)) { frozen = 0; return; }
     if (video.currentTime === lastT) frozen += 2; else { frozen = 0; lastT = video.currentTime; }
     if (frozen >= 10) {
@@ -427,10 +487,35 @@
   // ---------- Talk to the server every few seconds ----------
   const viewerId = Math.random().toString(36).slice(2) + Date.now().toString(36);
   let refreshing = false;
+  // live.js holds the links; re-read it so changes from /publish arrive without reloading
+  async function readLiveFile() {
+    const r = await fetch(`live.js?t=${Date.now()}`, { cache: "no-store" });
+    const text = await r.text();
+    const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+    return JSON.parse(json);
+  }
+  function embedStatus() {
+    const angles = LIVE.angles || {};
+    return {
+      live: Object.keys(angles).filter((id) => angles[id].youtube || angles[id].facebook),
+      featured: LIVE.main, announcement: LIVE.announcement || "", announcedAt: LIVE.announcement ? LIVE.updated : null,
+      watching: 0, admitted: true,
+    };
+  }
+
   async function refresh(force) {
     if (refreshing && !force) return;
     refreshing = true;
     try {
+      if (EMBED) {
+        try { LIVE = await readLiveFile(); } catch (_) { /* keep what we have */ }
+        status = embedStatus();
+        const next = pickAngle();
+        if (next !== current) show(next);
+        else if (next) { showEmbed(next); renderAltSource(); } // links may have changed
+        renderAngles(); renderPill(); renderNotice(); renderPoster();
+        return;
+      }
       const r = await fetch(`${API}/api/status?id=${viewerId}&angle=${current || ""}`, { cache: "no-store" });
       status = await r.json();
       renderPoster();
@@ -446,7 +531,7 @@
     }
   }
   refresh();
-  setInterval(refresh, 5000);
+  setInterval(refresh, EMBED ? 20000 : 5000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   addEventListener("online", () => refresh());
   addEventListener("offline", renderPill);

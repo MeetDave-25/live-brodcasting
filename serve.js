@@ -587,7 +587,7 @@ const TYPES = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json",
 };
-const PRETTY = { "/": "index.html", "/studio": "studio.html", "/admin": "admin.html" };
+const PRETTY = { "/": "index.html", "/studio": "studio.html", "/admin": "admin.html", "/publish": "publish.html" };
 
 function serveStatic(req, res, pathname) {
   const rel = PRETTY[pathname] || path.normalize(decodeURIComponent(pathname)).replace(/^[\\/]+/, "");

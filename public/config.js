@@ -4,6 +4,9 @@ window.APP_CONFIG = {
   // When the pages are on Vercel, put the laptop's tunnel address here, e.g. "https://live.yourdomain.com"
   server: "https://opt-tons-swim-let.trycloudflare.com",
 
+  // GitHub repository the /publish page saves live links to
+  repo: "MeetDave-25/live-brodcasting",
+
   name: "RANGVAASA",
   year: "2026",
   host: "LJCCA × AIRA LAB",

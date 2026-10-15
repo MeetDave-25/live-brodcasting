@@ -177,8 +177,8 @@ function mtxPaths(maxAge = 2000) {
 // A phone can stay connected but stop sending video (screen locked, app switched, camera taken by
 // another app). Then the angle is "ready" but frozen, and viewers would wait forever. So an angle
 // only counts as live while video bytes keep arriving.
-const STALL_WINDOW_MS = 6000;
-const STALL_KBPS = 80; // below this only audio is arriving (Opus is ~30-60 kbps), so the video stopped
+const STALL_WINDOW_MS = 10000;
+const STALL_KBPS = 40; // well below video; a weak phone signal can dip under 80 kbps for a moment
 const flow = new Map(); // angle -> { startBytes, startT, stalled }
 function trackFlow(items) {
   const now = Date.now();
@@ -376,8 +376,9 @@ function transcodeArgs(angle) {
     : VIDEO_ENCODER === "h264_qsv"
       ? ["-c:v", "h264_qsv", "-preset", "veryfast", "-idr_interval", "0", "-forced_idr", "1", ...keyframes]
       : ["-c:v", VIDEO_ENCODER, "-forced-idr", "1", ...keyframes];
-  return ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", `rtsp://127.0.0.1:8554/${angle}`,
-    "-map", "0:v:0", "-map", "0:a:0?", "-r", "30", ...enc, "-b:v", "1600k", "-maxrate", "2000k", "-bufsize", "3200k",
+  return ["-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp",
+    "-analyzeduration", "2000000", "-probesize", "2000000", "-i", `rtsp://127.0.0.1:8554/${angle}`,
+    "-map", "0:v:0", "-map", "0:a:0?", "-r", "30", ...enc, "-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k",
     "-c:a", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", `rtsp://127.0.0.1:8554/${angle}x`];
 }
 
@@ -408,7 +409,9 @@ function syncTranscoders(live) {
     transcoders.set(angle, w);
   }
 }
-setInterval(() => { mtxPaths().then((items) => syncTranscoders(liveAngles(items))).catch(() => {}); }, 2000);
+setInterval(() => {
+  mtxPaths().then((items) => syncTranscoders(items.filter((p) => isAngle(p.name) && p.ready).map((p) => p.name))).catch(() => {});
+}, 2000);
 process.on("exit", () => { for (const t of transcoders.values()) if (t.proc) try { t.proc.kill(); } catch {} });
 
 // A YouTube link the admin pasted, used to send overflow viewers to the YouTube copy

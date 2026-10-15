@@ -350,7 +350,7 @@
       if (CLOUD) {
         playCloud(angle);
       } else if (window.Hls && Hls.isSupported()) {
-        hls = new Hls({ backBufferLength: 30, maxLiveSyncPlaybackRate: 1.1 });
+        hls = new Hls({ backBufferLength: 30, maxLiveSyncPlaybackRate: 1.1, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 10 }); // ~8 s buffer rides out hiccups
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (!d.fatal) return;
           if (d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();

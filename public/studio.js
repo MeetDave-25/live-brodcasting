@@ -32,7 +32,7 @@
   let stream = null, pc = null, videoSender = null;
   let wantLive = false, liveSince = 0;
   let facing = "environment";
-  let reconnectTimer, statsTimer, clockTimer, wakeLock = null;
+  let reconnectTimer, statsTimer, clockTimer, graceTimer, wakeLock = null;
   let takenAngles = [];
   let iceServers = []; // STUN/TURN from the server, so phones on other networks can connect
 
@@ -213,13 +213,24 @@
       if (pc !== thisPc) return;
       const st = pc.connectionState;
       if (st === "connected") {
+        clearTimeout(graceTimer);
         if (!liveSince) liveSince = Date.now();
         say("");
         $("rec").hidden = false;
         if (navigator.vibrate) navigator.vibrate(40);
-      } else if (st === "failed" || st === "disconnected") {
+      } else if (st === "disconnected") {
+        // Mobile networks blip for a second or two all the time. Hold on instead of tearing the
+        // connection down; only reconnect if it hasn't come back after 10 s.
         if (!wantLive) return;
-        if (!liveSince && st === "failed") {
+        say("Weak signal… holding on", "err");
+        clearTimeout(graceTimer);
+        graceTimer = setTimeout(() => {
+          if (wantLive && pc === thisPc && pc.connectionState !== "connected") reconnect("Signal lost. Reconnecting…");
+        }, 10000);
+      } else if (st === "failed") {
+        if (!wantLive) return;
+        clearTimeout(graceTimer);
+        if (!liveSince) {
           reconnect("Can't reach the laptop from this network. Join the laptop's Wi-Fi, or ask the organisers to turn on the camera relay. Retrying…");
         } else reconnect("Signal lost. Reconnecting…");
       }
